@@ -3,24 +3,49 @@ module Board (
 ) where
 
 import System.Console.ANSI
+import Field
 
-drawBoard :: IO ()
-drawBoard = do
+drawBoard :: Cursor -> IO ()
+drawBoard c = do
     clearScreen
-    sequence_ $ drawLine <$> [1..8]
+    putStrLn ""
+    sequence_ $ drawLine c <$> [1..8]
+    putStrLn ""
 
-drawCell :: Int -> Int -> IO ()
-drawCell x y = do
-    setColors x y
-    putStr "  "
-    where
-        setColors x y
-            | mod x 2 == mod y 2 = setSGR [SetColor Background Vivid White]
-            | otherwise = setSGR [SetColor Background Vivid Black]
+drawTopCell :: Cursor -> Int -> Int -> IO ()
+drawTopCell c x y
+    | fst c == x && snd c == y = do
+        setBackColors x y
+        setSGR [SetColor Foreground Dull Black]
+        putStr "┏  ┓"
+        setSGR [Reset]
+    | otherwise = do
+        setBackColors x y
+        putStr "    "
 
-drawLine :: Int -> IO ()
-drawLine y = do
+drawBottomCell :: Cursor -> Int -> Int -> IO ()
+drawBottomCell c x y
+    | fst c == x && snd c == y = do
+        setBackColors x y
+        setSGR [SetColor Foreground Dull Black]
+        putStr "┗  ┛"
+        setSGR [Reset]
+    | otherwise = do
+        setBackColors x y
+        putStr "    "
+
+setBackColors :: Int -> Int -> IO ()
+setBackColors x y
+    | mod x 2 == mod y 2 = setSGR [SetColor Background Vivid White]
+    | otherwise = setSGR [SetColor Background Vivid Black]
+
+drawLine :: Cursor -> Int -> IO ()
+drawLine c y = do
     putStr "  "
-    sequence_ $ (`drawCell` y) <$> [1..8]
+    sequence_ $ (\x -> drawTopCell c x y) <$> [1..8]
+    setSGR [Reset]
+    putStrLn ""
+    putStr "  "
+    sequence_ $ (\x -> drawBottomCell c x y) <$> [1..8]
     setSGR [Reset]
     putStrLn ""

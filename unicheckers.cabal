@@ -16,4 +16,7 @@ executable unicheckers
     hs-source-dirs: src
     other-modules:
         Board
+        Control
+        Field
+        Misc
 
