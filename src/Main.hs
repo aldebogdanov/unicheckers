@@ -3,8 +3,10 @@ module Main (
 ) where
 
 import Board
-import Field
+import Draw
 import Control
+import Data.Maybe (isNothing)
+import System.Exit (die)
 
 main :: IO ()
 main = do
@@ -12,6 +14,15 @@ main = do
     loop c'
         where
             loop c = do
-                drawBoard c
-                key <- lookForKey ""
-                loop $ doCursorMove c key
+                drawBoard c generateFigures
+                ctrl <- lookForCtrl
+                case ctrl of
+                    Nothing -> loop c
+                    Just Exit -> die "Thank you!"
+                    _ -> loop $ handleControl c ctrl
+
+handleControl :: Cursor -> Maybe Control -> Cursor
+handleControl c ctrl
+    | ctrl `elem` map Just directions = doCursorMove c ctrl
+    | ctrl == Just Select = c
+    | isNothing ctrl = c
