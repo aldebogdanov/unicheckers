@@ -1,21 +1,34 @@
 module Board (
+    Cell,
     Cursor,
+    Selection,
+    State(..),
     doCursorMove,
     generateFigures,
     Figure,
     figureType,
     figureTeam,
-    figureX,
-    figureY,
+    figureCell,
     Team(..),
-    FigureType(..)
+    FigureType(..),
+    getFigureFromList,
+    getFigure,
+    isFigureSelected,
+    getSelectedFigure
 ) where
 
 import Control
 import Control.Monad (guard)
-import Data.Maybe (isJust, catMaybes)
+import Data.Maybe (isJust, fromJust, isNothing, catMaybes)
 
+data State = State  { cursor :: Cursor
+                    , figures :: [Figure]
+                    , selection :: Selection
+                    }
+
+type Cell = (Int, Int)
 type Cursor = (Int, Int)
+type Selection = Maybe (Int, Int)
 
 doCursorMove :: Cursor -> Maybe Control -> Cursor
 doCursorMove c ctrl
@@ -30,9 +43,8 @@ data Team = Reds | Blues deriving (Eq, Show)
 
 data Figure = Figure { figureType :: FigureType
                      , figureTeam :: Team
-                     , figureX :: Int
-                     , figureY :: Int
-                     } deriving Show
+                     , figureCell :: Cell
+                     } deriving (Eq, Show)
 
 generateFigures :: [Figure]
 generateFigures = catMaybes $ [1..8] >>= \x -> [1..8] >>= \y -> return $ generateMaybeFigure x y
@@ -42,7 +54,28 @@ generateMaybeFigure x y
     | y /= 4 && y /= 5 && mod x 2 == mod y 2 = Just Figure {
         figureType  = Checker,
         figureTeam  = if y <=3 then Blues else Reds,
-        figureX     = x,
-        figureY     = y
+        figureCell  = (x, y)
     }
     | otherwise = Nothing
+
+getFigure :: State -> Cell -> Maybe Figure
+getFigure state = getFigureFromList $ figures state
+
+getFigureFromList :: [Figure] -> Cell -> Maybe Figure
+getFigureFromList figs cell
+    | null fig = Nothing
+    | otherwise = Just $ head fig
+    where
+        fig = filter (\fg -> figureCell fg == cell) figs
+
+isFigureSelected :: State -> Bool
+isFigureSelected state
+    | isNothing fig = False
+    | otherwise = True
+    where
+        fig = maybe Nothing (getFigure state) sel
+        sel = selection state
+
+getSelectedFigure :: State -> Figure
+getSelectedFigure state = fromJust $ getFigure state $ fromJust $ selection state
+

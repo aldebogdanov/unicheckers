@@ -5,28 +5,36 @@ module Draw (
 import System.Console.ANSI
 import Board
 
-drawBoard :: Cursor -> [Figure] -> IO ()
-drawBoard c figs = do
+drawBoard :: State -> IO ()
+drawBoard state = do
     clearScreen
     putStrLn ""
-    sequence_ $ drawLine c figs <$> [1..8]
+    sequence_ $ drawLine state <$> [1..8]
     putStrLn ""
 
-drawTopCell :: Cursor -> [Figure] -> Int -> Int -> IO ()
-drawTopCell c figs x y = do
+drawTopCell :: State -> Int -> Int -> IO ()
+drawTopCell state x y = do
     setBackColors x y
     drawCellEdge c x y "┏"
-    drawInnerCell figs x y "▄▄"
+    drawInnerCell figs x y str
     drawCellEdge c x y "┓"
     setSGR [Reset]
+    where
+        c = cursor state
+        figs = figures state
+        str = if selection state == Just (x, y) then "⢠⡄" else "▗▖"
 
-drawBottomCell :: Cursor -> [Figure] -> Int -> Int -> IO ()
-drawBottomCell c figs x y = do
+drawBottomCell :: State -> Int -> Int -> IO ()
+drawBottomCell state x y = do
     setBackColors x y
     drawCellEdge c x y "┗"
-    drawInnerCell figs x y "▀▀"
+    drawInnerCell figs x y str
     drawCellEdge c x y "┛"
     setSGR [Reset]
+    where
+        c = cursor state
+        figs = figures state
+        str = if selection state == Just (x, y) then "⠘⠃" else "▝▘"
 
 drawCellEdge :: Cursor -> Int -> Int -> String -> IO ()
 drawCellEdge c x y str
@@ -43,29 +51,22 @@ drawInnerCell figs x y str =
             setColor $ figureTeam figure
             putStr str
     where
-        fig = getFigure figs x y
+        fig = getFigureFromList figs (x, y)
         setColor Reds = setSGR [SetColor Foreground Vivid Red]
         setColor Blues = setSGR [SetColor Foreground Vivid Blue]
-
-getFigure :: [Figure] -> Int -> Int -> Maybe Figure
-getFigure figs x y
-    | null fig = Nothing
-    | otherwise = Just $ head fig
-    where
-        fig = filter (\fg -> figureX fg == x && figureY fg == y) figs
 
 setBackColors :: Int -> Int -> IO ()
 setBackColors x y
     | mod x 2 == mod y 2 = setSGR [SetColor Background Vivid White]
     | otherwise = setSGR [SetColor Background Vivid Black]
 
-drawLine :: Cursor -> [Figure] -> Int -> IO ()
-drawLine c figs y = do
+drawLine :: State -> Int -> IO ()
+drawLine state y = do
     putStr "  "
-    sequence_ $ (\x -> drawTopCell c figs x y) <$> [1..8]
+    sequence_ $ (\x -> drawTopCell state x y) <$> [1..8]
     setSGR [Reset]
     putStrLn ""
     putStr "  "
-    sequence_ $ (\x -> drawBottomCell c figs x y) <$> [1..8]
+    sequence_ $ (\x -> drawBottomCell state x y) <$> [1..8]
     setSGR [Reset]
     putStrLn ""

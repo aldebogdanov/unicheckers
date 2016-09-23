@@ -2,27 +2,41 @@ module Main (
     main
 ) where
 
+import AI
 import Board
 import Draw
 import Control
-import Data.Maybe (isNothing)
 import System.Exit (die)
+import Data.Maybe (isNothing)
 
 main :: IO ()
 main = do
-    let c' = (3,3)
-    loop c'
+    let initial = State {
+                      cursor = (3, 3)
+                    , figures = generateFigures
+                    , selection = Nothing
+                    }
+    loop initial
         where
-            loop c = do
-                drawBoard c generateFigures
+            loop state = do
+                drawBoard state
                 ctrl <- lookForCtrl
                 case ctrl of
-                    Nothing -> loop c
+                    Nothing -> loop state
                     Just Exit -> die "Thank you!"
-                    _ -> loop $ handleControl c ctrl
+                    _ -> loop $ handleControl state ctrl
 
-handleControl :: Cursor -> Maybe Control -> Cursor
-handleControl c ctrl
-    | ctrl `elem` map Just directions = doCursorMove c ctrl
-    | ctrl == Just Select = c
-    | isNothing ctrl = c
+handleControl :: State -> Maybe Control -> State
+handleControl state ctrl
+    | ctrl `elem` map Just directions = state { cursor = doCursorMove (cursor state) ctrl }
+    | ctrl == Just Select = selectCell state
+    | isNothing ctrl = state
+
+selectCell :: State -> State
+selectCell state
+    | Just (cursor state) == selection state = state { selection = Nothing }
+    | isFigureSelected state = moveFigure state
+    | otherwise = state { selection = Just (cursor state) }
+
+
+

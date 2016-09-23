@@ -25,8 +25,6 @@ import System.IO (
     BufferMode(..),
     stdout,
     hSetEcho)
-
-import System.Exit
 import Misc
 
 data Control = ToUp | ToDown | ToLeft | ToRight | Exit | Select deriving Eq
@@ -57,3 +55,24 @@ specialChars 'B' = Just ToDown
 specialChars 'C' = Just ToRight
 specialChars 'D' = Just ToLeft
 specialChars _ = Nothing
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
