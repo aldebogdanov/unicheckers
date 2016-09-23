@@ -1,8 +1,5 @@
 module AI (
-    baseCheckerMoves,
-    moveFigure,
-    getRangeBetween,
-    Move
+    moveFigure
 ) where
 
 import Board

@@ -1,7 +1,6 @@
 module Board (
     Cell,
     Cursor,
-    Selection,
     State(..),
     doCursorMove,
     generateFigures,
