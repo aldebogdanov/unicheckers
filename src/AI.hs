@@ -12,7 +12,7 @@ generator = mkStdGen getPOSIXTime
 
 
 handleAI :: State -> State
-handleAI s = 
+handleAI s = newState
   where
     variants         = processStates [[s, 0, 0]] ((level s) * 2)
     mx               = maximum $ map (\(_, ai, pl) : vs -> ai - pl) variants
