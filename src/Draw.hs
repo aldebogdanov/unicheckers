@@ -2,8 +2,10 @@ module Draw (
     drawBoard
 ) where
 
+import State
 import System.Console.ANSI
-import Board
+import Data.Foldable (find)
+
 
 drawBoard :: State -> IO ()
 drawBoard state = do
@@ -12,29 +14,30 @@ drawBoard state = do
     sequence_ $ drawLine state <$> [1..8]
     putStrLn ""
 
+
 drawTopCell :: State -> Int -> Int -> IO ()
 drawTopCell state x y = do
     setBackColors x y
     drawCellEdge c x y "┏"
-    drawInnerCell figs x y str
+    drawInnerCell figs x y
     drawCellEdge c x y "┓"
     setSGR [Reset]
     where
         c = cursor state
         figs = figures state
-        str = if selection state == Just (x, y) then "⢠⡄" else "▗▖"
+
 
 drawBottomCell :: State -> Int -> Int -> IO ()
 drawBottomCell state x y = do
     setBackColors x y
     drawCellEdge c x y "┗"
-    drawInnerCell figs x y str
+    drawInnerCell figs x y
     drawCellEdge c x y "┛"
     setSGR [Reset]
     where
         c = cursor state
         figs = figures state
-        str = if selection state == Just (x, y) then "⠘⠃" else "▝▘"
+
 
 drawCellEdge :: Cursor -> Int -> Int -> String -> IO ()
 drawCellEdge c x y str
@@ -43,22 +46,25 @@ drawCellEdge c x y str
         putStr str
     | otherwise = putStr " "
 
-drawInnerCell :: [Figure] -> Int -> Int -> String -> IO ()
-drawInnerCell figs x y str =
+
+drawInnerCell :: [Figure] -> Int -> Int -> IO ()
+drawInnerCell figs x y =
     case fig of
         Nothing -> putStr "  "
         Just figure -> do
-            setColor $ figureTeam figure
-            putStr str
+            setColor $ fTeam figure
+            putStr $ if isSelected figure then "⠘⠃" else "▝▘"
     where
-        fig = getFigureFromList figs (x, y)
+        fig = find (\f -> fCell f == (x, y)) figs 
         setColor Reds = setSGR [SetColor Foreground Vivid Red]
         setColor Blues = setSGR [SetColor Foreground Vivid Blue]
+
 
 setBackColors :: Int -> Int -> IO ()
 setBackColors x y
     | mod x 2 == mod y 2 = setSGR [SetColor Background Vivid White]
     | otherwise = setSGR [SetColor Background Vivid Black]
+
 
 drawLine :: State -> Int -> IO ()
 drawLine state y = do
@@ -70,3 +76,4 @@ drawLine state y = do
     sequence_ $ (\x -> drawBottomCell state x y) <$> [1..8]
     setSGR [Reset]
     putStrLn ""
+

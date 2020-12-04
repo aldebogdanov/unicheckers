@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-6.13
+resolver: ghc-8.10.2
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -39,10 +39,24 @@ packages:
 - '.'
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-extra-deps: []
+extra-deps:
+  - QuickCheck-2.14.2
+  - ansi-terminal-0.11
+  - random-1.2.0
+  - splitmix-0.1
+  - colour-2.3.5
+  - ncurses-0.2.16
+  - c2hs-0.28.6
+  - dlist-1.0
+  - language-c-0.8.3
+  - alex-3.2.5
+  - happy-1.20.0
+  - syb-0.7.1
 
 # Override default flag values for local packages and extra-deps
-flags: {}
+flags:
+  ncurses:
+    force-narrow-library: true
 
 # Extra package databases containing global packages
 extra-package-dbs: []
@@ -59,7 +73,7 @@ extra-package-dbs: []
 # arch: x86_64
 # 
 # Extra directories used by stack for building
-# extra-include-dirs: [/path/to/dir]
+#extra-include-dirs: [/usr/include/]
 # extra-lib-dirs: [/path/to/dir]
 # 
 # Allow a newer minor version of GHC than the snapshot specifies
