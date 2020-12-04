@@ -17,7 +17,5 @@ executable unicheckers
     hs-source-dirs: src
     other-modules:
         AI
-        Draw
         State
-        Board
 

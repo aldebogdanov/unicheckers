@@ -2,7 +2,7 @@ module State where
 
 import Data.Maybe (isNothing, isJust)
 import Data.Foldable (find)
-import UI.NCurses (Event(EventCharacter, EventSpecialKey), Key(..))
+import UI.NCurses
 import Debug.Trace
 
 data FigureType = Checker | King deriving (Eq, Show)
@@ -22,7 +22,6 @@ data State = State { turn :: Team
                    , cursor :: Cursor
                    , figures :: [Figure]
                    , isFixed :: Bool
-                   , isDebug :: Bool
                    } deriving (Show)
 
 
@@ -96,19 +95,7 @@ getPath s = do
     mf     <- getSelectedFigure ms
     mfCell <- Just $ fCell mf
     mc     <- Just $ cursor ms
-    return $ filter (`notElem` [mc, mfCell]) $ fullPath mfCell mc
-
-
-fullPath :: (Int, Int) -> (Int, Int) -> [(Int, Int)]
-fullPath mfCell cursor = 
-    zip [xStart, xThen .. xEnd] [yStart, yThen .. yEnd]
-  where
-    xStart = fst mfCell
-    xEnd   = fst cursor
-    yStart = snd mfCell
-    yEnd   = snd cursor
-    xThen  = if xStart > xEnd then xStart - 1 else xStart + 1
-    yThen  = if yStart > yEnd then yStart - 1 else yStart + 1
+    return $ zip (getRangeBetween (fst mfCell) (fst mc)) (getRangeBetween (snd mfCell) (snd mc))
 
 
 getDistance :: State -> Maybe Int
@@ -138,11 +125,11 @@ checkDirection s es f = case fType f of
     King                    -> Just s
     Checker | not (null es) -> Just s
     Checker                 -> case fTeam f of
-        Blues | direction > 0 -> Just s
-        Reds  | direction < 0 -> Just s
-        _                     -> Nothing
+        Blues | trace (show direction) direction > 0 -> Just s
+        Reds  | direction < 0                -> Just s
+        _                                    -> Nothing
       where
-        direction = fst (cursor s) - fst (fCell f)
+        direction = snd (cursor s) - snd (fCell f)
 
 
 checkNoFriendly :: State -> [(Int, Int)] -> Maybe State
@@ -155,13 +142,13 @@ getEaten :: State -> [(Int, Int)] -> Maybe [Figure]
 getEaten s p = Just $ filter (\f -> fTeam f == nextTeam (turn s) && elem (fCell f) p) $ figures s
 
 
-turnResult :: State -> Maybe (State, [Figure])
+turnResult :: State -> Maybe (State, Int)
 turnResult s = do
     mr <- checkPath s
     tr mr
   where
     tr mr | null (snd mr) && anyCanEat s = Nothing
-          | otherwise                    = Just (updateState mr, snd mr)
+          | otherwise                    = Just (updateState mr, length (snd mr))
 
 
 updateState :: (State, [Figure]) -> State
@@ -177,8 +164,8 @@ updateState (s, es) = s { turn = newTurn, figures = newFigures, isFixed = newIsF
 
 determineType :: Figure -> FigureType
 determineType f = case (fTeam f, fst $ fCell f) of
-    (Blues, 8) -> King
-    (Reds, 1)  -> King
+    (Blues, 1) -> King
+    (Reds, 8)  -> King
     _          -> fType f
 
 
@@ -194,7 +181,6 @@ anyCanEat :: State -> Bool
 anyCanEat s = any (can s) $ getTeamFigures s (turn s)
   where
     can s f = maybe False canEat (selectFigure s f)
-
 
 canEat :: State -> Bool
 canEat s = any (isEating . setCursor s) $ getDiagonalCells s
@@ -257,7 +243,7 @@ getRangeBetween :: Int -> Int -> [Int]
 getRangeBetween a b
     | abs (a - b) <= 1 = []
     | a < b = [(a + 1)..(b - 1)]
-    | otherwise = [(a - 1)..(b + 1)]
+    | otherwise = [(b + 1)..(a - 1)]
 --
 --
 --checkNoFriendly :: State -> Bool
