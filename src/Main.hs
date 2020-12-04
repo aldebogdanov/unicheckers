@@ -20,6 +20,7 @@ main = runCurses $ do
                         , cursor  = (3, 3)
                         , figures = generateFigures
                         , isFixed = False
+                        , aiTeam  = Reds
                         , level   = 3
                         , isDebug = True
                         }
@@ -42,8 +43,9 @@ main = runCurses $ do
             loop win dwin colors state = do
                 when (isDebug state) $ updateDebug dwin state
                 update win colors state
-                e <- getEvent win Nothing
-                case e of
+                when (turn state == aiTeam state) $ loop win dwin colors $ handleAI state
+                when (turn state /= aiTeam state) $ e <- getEvent win Nothing
+                when (turn state /= aiTeam state) case e of
                     Just (EventSpecialKey (KeyFunction 10)) -> do
                         cloneWindow win
                         cloneWindow dwin

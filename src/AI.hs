@@ -1,55 +1,48 @@
 module AI (
---    moveFigure
+  handleAI
 ) where
 
---import State
---import Board
---import Data.Maybe (isNothing, fromJust)
-
---figureMoves :: State -> Figure -> [(Int, Int)]
---figureMoves state fig
---    | figureType fig == Checker = checkerMoves state fig
---    | othrwise = []
-
---checkerMoves :: State -> Figure -> [(Int, Int)]
---checkerMoves state fig = do
---    baseMoves <- baseCheckerMoves
+import State
+import Data.Maybe (catMaybes)
+import System.Random
+import Data.Time.Clock.POSIX (getPOSIXTime)
 
 
---baseCheckerMoves :: [(Int -> Int, Int -> Int)]
---baseCheckerMoves = [(+1),(`subtract` 1)] >>= \f -> [(+1),(`subtract` 1)] >>= \g -> return (f, g)
---
---move :: Cell -> (Int -> Int, Int -> Int) -> Cell
---move (x, y) (f, g) = (f x, g y)
---
---
---moveFigure :: State -> State
---moveFigure state =
---    state   { figures = filter (`notElem` eatenFigs) (figures newState) }
---    where
---        eatenFigs = getEatenFigures state move
---        move = getMove state
---        newState = state    { figures = map (
---                                \fig -> if figureCell fig == source move
---                                        then fig { fCell = dest move }
---                                        else fig
---                                ) (figures state)
---                            }
---
---data Move = Move    { figure    :: Figure
---                    , source    :: Cell
---                    , dest      :: Cell
---                    }
---
---
---getMove :: State -> Move
---getMove state = Move    { figure    = fin $ figures state
---                        , source    = fromJust (selection state)
---                        , dest      = cursor state
---                        }
---
---
---getRangeBetween :: Int -> Int -> [Int]
---getRangeBetween a b
---    | a < b = [(a + 1)..(b - 1)]
---    | otherwise = [(b + 1)..(a - 1)]
+generator = mkStdGen getPOSIXTime
+
+
+handleAI :: State -> State
+handleAI s = 
+  where
+    variants         = processStates [[s, 0, 0]] ((level s) * 2)
+    mx               = maximum $ map (\(_, ai, pl) : vs -> ai - pl) variants
+    bestVars         = filter (\(_, ai, pl) : vs -> ai - pl == mx) variants
+    len              = length bestVars
+    (rand, _)        = randomR (0, (len - 1)) generator
+    (newState, _, _) = last $ init $ bestVars!!rand
+
+
+processStates :: [[(State, Int, Int)]] -> Int -> [[(State, Int, Int)]]
+processStates acc num = case num of
+    0 -> acc
+    n -> processStates (acc >>= processState) (n - 1)
+
+
+processState :: [(State, Int, Int)] -> [[(State, Int, Int)]]
+processState ss =
+    map (\ns -> (if team s == aiTeam s then (ns, aiEat + (snd ns), plEat) else (ns, aiEat, plEat + (snd ns))) : ss) newSs
+  where
+    (s, aiEat, plEat) = head ss
+    figs              = getCurrentTeamFigures s
+    newSs             = figs >>= (processFigure s)
+
+
+processFigure :: State -> Figure -> [(State, Int)]
+processFigure s f = catMaybes $ map (processTurn s f) [ (x, y) | x <- [1..8], y <- [1..8] ]
+
+
+processTurn :: State -> Figure -> (Int, Int) -> Maybe (State, Int)
+processTurn s f c = do
+    ms <- selectFigure s f
+    ms <- setCursor ms c
+    return $ turnResult ms
