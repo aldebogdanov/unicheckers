@@ -14,4 +14,4 @@ Known issues:
 - mishmash with coordinates;
 - code refactoring to become more Haskell-way is not bad idea.
 
-Aleksandr Bogdanov. 2020
+Aleksandr Bogdanov © 2020.
