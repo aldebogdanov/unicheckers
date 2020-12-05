@@ -6,7 +6,7 @@ import AI
 import System.Exit (die)
 import State
 import Data.Foldable (find)
-import Data.Maybe (isJust, isNothing, fromMaybe, mapMaybe)
+import Data.Maybe (isJust, isNothing, fromMaybe, mapMaybe, listToMaybe)
 import UI.NCurses
 import Control.Monad (when)
 import Debug.Trace
@@ -17,16 +17,18 @@ main = runCurses $ do
     setCursorMode CursorInvisible
 
     let initial = State { status    = Stopped
+                        , lastVar   = []
                         , turn      = Blues
                         , cursor    = (3, 3)
                         , figures   = [] -- generateFigures
                         , isFixed   = False
                         , aiTeam    = Reds
-                        , level     = 4
+                        , level     = 1
                         , winner    = Nothing
                         , inOptions = True
                         , option    = 2
                         , isDebug   = False
+                        , variants  = []
                         }
 
     c0 <- newColorID ColorWhite ColorBlack $ toInteger idleBlack
@@ -46,7 +48,7 @@ main = runCurses $ do
     loop win owin dwin colors initial
         where
             loop win owin dwin colors state = do
-            
+
                 update win colors state
                 updateOptions owin colors state
                 updateDebug dwin state
@@ -289,4 +291,7 @@ drawDebug s sh sw = do
     drawString $ "Will eat:\t" ++ show (snd $ fromMaybe (s, []) $ turnResult s)
     moveCursor 7 2
     drawString $ "Can eat:\t" ++ show (map getSelectedFigure $ filter canEat $ mapMaybe (selectFigure s) (getCurrentTeamFigures s))
-
+    moveCursor 8 2
+    drawString $ "Variants num:\t" ++ show (length $ variants s)
+--    moveCursor 9 2
+--    drawString $ "Sample variant:\t" ++ show (listToMaybe $ variants s)

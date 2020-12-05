@@ -21,6 +21,7 @@ data Figure = Figure { fTeam :: Team
                      } deriving (Eq, Show)
 
 data State = State { status    :: GameStatus
+                   , lastVar   :: [(State, Int, Int)]
                    , turn      :: Team
                    , cursor    :: Cursor
                    , figures   :: [Figure]
@@ -31,7 +32,11 @@ data State = State { status    :: GameStatus
                    , inOptions :: Bool
                    , option    :: Int
                    , isDebug   :: Bool
-                   } deriving (Show)
+                   , variants  :: [[(State, Int, Int)]]
+                   }
+
+instance Show State where
+    show (State st _ t _ fs _ _ _ _ _ _ _ vs) = "<" ++ show st ++ ", " ++ show t ++ ", " ++ show (length fs) ++ " figures, " ++ show (length vs) ++ " variants>"
 
 
 handleOptionsControl :: State -> Event -> State

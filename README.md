@@ -6,12 +6,18 @@ Written in Haskell using `UI.Ncurses library` for frontend.
 Still bugly.
 
 Known issues:
-- troubles on quit. It seems something with garbage collection;
-- when computer guaranteed that you will lose in N turns (depending on level you chose), it stops game unfinished;
-- troubles with randomizer initialization;
-- need to optimize and enhance AI;
-- have to provide more debug information in debug window;
-- mishmash with coordinates;
-- code refactoring to become more Haskell-way is not bad idea.
+- Troubles on quit. It seems something with garbage collection;
+- Troubles with randomizer initialization;
+- Some questions about rules when King is eating;
+- Need to optimize and enhance AI;
+- Have to provide more debug information in debug window;
+- Mishmash with coordinates;
+- Code refactoring to become more Haskell-way is not bad idea.
+
+### ChangeLog
+
+#### 0.0.9.2
+2020-12-05
+- Fixed win detection. Computer will finish game even if victory is already guaranteed
 
 Aleksandr Bogdanov © 2020.

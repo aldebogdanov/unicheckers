@@ -19,9 +19,16 @@ handleAI s = newState
     bestVars         = filter (\((_, ai, pl) : vs) -> ai - pl == mx) variants
     len              = length bestVars
     (rand, _)        = randomR (0, len - 1) generator
-    (newState, _, _) = if len > 0
-                       then last $ init $ bestVars!!rand
-                       else (s { status = Stopped, winner = Just $ turn s, inOptions = True }, 0, 0)
+    bestVar          = if len > 0 then init $ bestVars!!rand else init $ lastVar s
+    (ns1, _, _)      = last bestVar
+    (ns2, _, _)      = if checkWin ns1
+                       then (ns1 { status = Stopped, winner = Just $ turn s, inOptions = True }, 0, 0)
+                       else (ns1, 0, 0)
+    (newState, _, _) = (ns2 { lastVar = bestVar, variants = variants }, 0, 0)
+
+
+checkWin :: State -> Bool
+checkWin s = null (getTeamFigures s Blues) || null (getTeamFigures s Reds)
 
 
 processStates :: [[(State, Int, Int)]] -> Int -> [[(State, Int, Int)]]
