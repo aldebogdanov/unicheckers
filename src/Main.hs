@@ -6,7 +6,7 @@ import AI
 import System.Exit (die)
 import State
 import Data.Foldable (find)
-import Data.Maybe (isJust, fromMaybe, catMaybes, mapMaybe)
+import Data.Maybe (isJust, isNothing, fromMaybe, mapMaybe)
 import UI.NCurses
 import Control.Monad (when)
 import Debug.Trace
@@ -16,13 +16,17 @@ main = runCurses $ do
     setEcho False
     setCursorMode CursorInvisible
 
-    let initial = State { turn    = Blues
-                        , cursor  = (3, 3)
-                        , figures = generateFigures
-                        , isFixed = False
-                        , aiTeam  = Reds
-                        , level   = 3
-                        , isDebug = True
+    let initial = State { status    = Stopped
+                        , turn      = Blues
+                        , cursor    = (3, 3)
+                        , figures   = [] -- generateFigures
+                        , isFixed   = False
+                        , aiTeam    = Reds
+                        , level     = 4
+                        , winner    = Nothing
+                        , inOptions = True
+                        , option    = 2
+                        , isDebug   = False
                         }
 
     c0 <- newColorID ColorWhite ColorBlack $ toInteger idleBlack
@@ -34,24 +38,35 @@ main = runCurses $ do
 
     let colors = [defaultColorID, c0, c1, c2, c3, c4, c5]
 
-    win      <- newWindow 26 44 0 0
+    win      <- newWindow 28 46 0 0
     (sh, sw) <- screenSize
+    owin     <- newWindow 28 31 0 46
     dwin     <- newWindow (sh - 28) sw 28 0
 
-    loop win dwin colors initial
+    loop win owin dwin colors initial
         where
-            loop win dwin colors state = do
-                when (isDebug state) $ updateDebug dwin state
+            loop win owin dwin colors state = do
+            
                 update win colors state
-                when (turn state == aiTeam state) $ loop win dwin colors $ handleAI state
-                when (turn state /= aiTeam state) $ e <- getEvent win Nothing
-                when (turn state /= aiTeam state) case e of
+                updateOptions owin colors state
+                updateDebug dwin state
+
+                when (status state == InProcess && turn state == aiTeam state) $ loop win owin dwin colors $ handleAI state
+--                when (status state == InProcess) $ loop win owin dwin colors $ handleAI state
+
+                e <- getEvent win Nothing
+                case e of
                     Just (EventSpecialKey (KeyFunction 10)) -> do
-                        cloneWindow win
-                        cloneWindow dwin
+                        closeWindow win
+                        cloneWindow owin
+                        closeWindow dwin
                         return ()
-                    Just e                                  -> loop win dwin colors $ handleControl state e
-                    _                                       -> loop win dwin colors state
+                    Just (EventCharacter '\t') -> loop win owin dwin colors $ state { inOptions = not (inOptions state) }
+                    Just e                     -> loop win owin dwin colors $
+                                                  if inOptions state
+                                                      then handleOptionsControl state e
+                                                      else handleGameControl state e
+                    _                          -> loop win owin dwin colors state
 
 
 update :: Window -> [ColorID] ->  State -> Curses ()
@@ -63,6 +78,11 @@ update w colors state = do
 drawCells :: [ColorID] -> State -> Update ()
 drawCells colors state = do
     setColor $ colors!!idleBlack
+    drawBorder Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+    moveCursor 0 20
+    setColor $ if inOptions state then colors!!idleBlack else colors!!idleWhite
+    drawString " GAME "
+    setColor $ colors!!idleBlack
     sequence_ $ drawAScaleItem <$> zip [1 .. 8] ['a' .. 'h']
     sequence_ $ drawNScaleItem <$> [1 .. 8]
     sequence_ $ drawCell colors state <$> [ (x, y) | x <- [1 .. 8], y <- [1..8] ]
@@ -70,24 +90,24 @@ drawCells colors state = do
 
 drawAScaleItem :: (Int, Char) -> Update ()
 drawAScaleItem (n, ch) = do
-    moveCursor 0 (fromIntegral $ (n-1) * 5 + 4)
+    moveCursor 1 (fromIntegral $ (n-1) * 5 + 5)
     drawString [ch]
-    moveCursor 25 (fromIntegral $ (n-1) * 5 + 4)
+    moveCursor 26 (fromIntegral $ (n-1) * 5 + 5)
     drawString [ch]
 
 
 drawNScaleItem :: Int -> Update ()
 drawNScaleItem n = do
-    moveCursor (fromIntegral $ (8-n) * 3 + 2) 0
+    moveCursor (fromIntegral $ (8-n) * 3 + 3) 1
     drawString $ show n
-    moveCursor (fromIntegral $ (8-n) * 3 + 2) 43
+    moveCursor (fromIntegral $ (8-n) * 3 + 3) 44
     drawString $ show n
 
 
 drawCell :: [ColorID] -> State -> (Int, Int) -> Update ()
 drawCell colors state (x, y) = do
     setAttribute AttributeBold True
-    moveCursor (fromIntegral $ (8-x) * 3 + 1) (fromIntegral $ (y-1) * 5 + 2)
+    moveCursor (fromIntegral $ (8-x) * 3 + 2) (fromIntegral $ (y-1) * 5 + 3)
     setColor $ if isWhiteCell x y then colors!!idleWhite else colors!!idleBlack
     if cursor state == (x, y)
         then do
@@ -97,7 +117,7 @@ drawCell colors state (x, y) = do
             drawGlyph glyphLineH
             drawGlyph glyphCornerUR
         else drawString "     "
-    moveCursor (fromIntegral $ (8-x) * 3 + 2) (fromIntegral $ (y-1) * 5 + 2)
+    moveCursor (fromIntegral $ (8-x) * 3 + 3) (fromIntegral $ (y-1) * 5 + 3)
     if cursor state == (x, y)
         then drawGlyph glyphLineV
         else drawString " "
@@ -108,23 +128,29 @@ drawCell colors state (x, y) = do
                 Reds  -> setColor $ if isWhiteCell x y then colors!!redWhite else colors!!redBlack
             setAttribute AttributeBlink $ isSelected figure
             case fType figure of
---                King    -> drawString "███"
-                King    -> drawString (show x ++ (if figure `elem` snd (fromMaybe (state, []) $ turnResult state) then "X" else "█") ++ show y)
-                Checker -> do
-                    drawString (show x)
-                    if figure `elem` snd (fromMaybe (state, []) $ turnResult state) then drawString "X" else drawGlyph glyphBoard
-                    drawString (show y)
---                    drawGlyph glyphBoard
---                    drawGlyph glyphBoard
---                    drawGlyph glyphBoard
+                King    -> if isDebug state then
+                    drawString (
+                        show x ++ (if figure `elem` snd (fromMaybe (state, []) $ turnResult state) then "X" else "█") ++ show y
+                    ) else drawString "███"
+                Checker -> (if isDebug state then
+                                (do drawString (show x)
+                                    if figure
+                                         `elem` snd (fromMaybe (state, []) $ turnResult state) then
+                                        drawString "X"
+                                    else
+                                        drawGlyph glyphBoard
+                                    drawString (show y))
+                            else
+                                (do drawGlyph glyphBoard
+                                    drawGlyph glyphBoard
+                                    drawGlyph glyphBoard))
             setAttribute AttributeBlink False
             setColor $ if isWhiteCell x y then colors!!idleWhite else colors!!idleBlack
         Nothing -> drawString $ if any isSelected (figures state) && isJust (turnResult (state {cursor = (x, y)})) then " + " else "   "
---        Nothing -> drawString $ (show x ++ (if any isSelected (figures state) && isJust (turnResult (state {cursor = (x, y)})) then "+" else " ") ++ show y)
     if cursor state == (x, y)
         then drawGlyph glyphLineV
         else drawString " "
-    moveCursor (fromIntegral $ (8-x) * 3 + 3) (fromIntegral $ (y-1) * 5 + 2)
+    moveCursor (fromIntegral $ (8-x) * 3 + 4) (fromIntegral $ (y-1) * 5 + 3)
     if cursor state == (x, y)
         then do
             drawGlyph glyphCornerLL
@@ -159,18 +185,76 @@ redWhite :: Int
 redWhite = 6
 
 
-generateFigures :: [Figure]
-generateFigures = catMaybes $ [1..8] >>= \x -> [1..8] >>= \y -> return $ generateMaybeFigure x y
+-- OPTIONS
+
+updateOptions :: Window -> [ColorID] -> State -> Curses ()
+updateOptions ow colors s = do
+    updateWindow ow $ drawOptions colors s
+    render
 
 
-generateMaybeFigure :: Int -> Int -> Maybe Figure
-generateMaybeFigure x y
-    | x /= 4 && x /= 5 && mod x 2 == mod y 2 = Just Figure { fTeam  = if x <=3 then Blues else Reds
-                                                           , fType  = Checker
-                                                           , fCell  = (x, y)
-                                                           , isSelected = False
-                                                           }
-    | otherwise = Nothing
+drawOptions :: [ColorID] -> State -> Update ()
+drawOptions colors s = do
+    setColor $ colors!!idleBlack
+    drawBorder Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+    moveCursor 0 11
+    setColor $ if inOptions s then colors!!idleWhite else colors!!idleBlack
+    drawString " OPTIONS "
+    setColor $ colors!!idleBlack
+    moveCursor 2 2
+    setColor $ colors!!redBlack
+    drawString "██"
+    setColor $ colors!!idleBlack
+    moveCursor 2 5
+    drawTeamString s Reds
+    moveCursor 4 2
+    setColor $ colors!!blueBlack
+    drawString "██"
+    setColor $ colors!!idleBlack
+    moveCursor 4 5
+    drawTeamString s Blues
+    setColor $ if option s == 0 then colors!!idleWhite else colors!!idleBlack
+    moveCursor 6 2
+    drawString "        Change Team        "
+    setColor $ if option s == 1 then colors!!idleWhite else colors!!idleBlack
+    moveCursor 8 2
+    drawString " "
+    drawGlyph glyphArrowL
+    drawString " "
+    moveCursor 8 27
+    drawString " "
+    drawGlyph glyphArrowR
+    drawString " "
+    setColor $ colors!!idleBlack
+    moveCursor 8 12
+    drawString $ "Level: " ++ show (level s)
+    setColor $ if option s == 2 then colors!!idleWhite else colors!!idleBlack
+    moveCursor 10 2
+    drawString "          New Game          "
+    setColor $ if option s == 3 then colors!!idleWhite else colors!!idleBlack
+    moveCursor 25 2
+    drawString "       "
+    drawGlyph $ if isDebug s then glyphBlock else glyphBullet
+    drawString " Debug  Mode       "
+    setColor $ colors!!idleBlack
+
+
+drawTeamString :: State -> Team -> Update ()
+drawTeamString s t  | aiTeam s == t = case winner s of
+                                          Just w  -> drawString $ if w == t then "WIN                     "
+                                                                            else "LOSE                    "
+                                          Nothing -> if status s == InProcess && turn s == aiTeam s
+                                                                   then do
+                                                                      setAttribute AttributeBlink True
+                                                                      drawString "Computing...            "
+                                                                      setAttribute AttributeBlink False
+                                                                   else
+                                                                      drawString "Waiting...              "
+                    | otherwise     = case winner s of
+                                          Just w  -> drawString $ if w == t then "YOU WIN                 "
+                                                                            else "YOU LOSE                "
+                                          Nothing -> drawString "YOU                     "
+
 
 
 -- DEBUG
@@ -178,7 +262,8 @@ generateMaybeFigure x y
 updateDebug :: Window -> State -> Curses ()
 updateDebug dw s = do
     (sh, sw) <- screenSize
-    updateWindow dw $ drawDebug s sh sw
+    updateWindow dw clear
+    when (isDebug s) $ updateWindow dw $ drawDebug s sh sw
     render
 
 
@@ -203,5 +288,5 @@ drawDebug s sh sw = do
     moveCursor 6 2
     drawString $ "Will eat:\t" ++ show (snd $ fromMaybe (s, []) $ turnResult s)
     moveCursor 7 2
-    drawString $ "Can eat:\t" ++ show (map getSelectedFigure $ filter canEat $ mapMaybe (selectFigure s) (getTeamFigures s (turn s)))
+    drawString $ "Can eat:\t" ++ show (map getSelectedFigure $ filter canEat $ mapMaybe (selectFigure s) (getCurrentTeamFigures s))
 

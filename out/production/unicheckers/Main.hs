@@ -6,8 +6,9 @@ import AI
 import System.Exit (die)
 import State
 import Data.Foldable (find)
-import Data.Maybe (isJust, catMaybes)
+import Data.Maybe (isJust, fromMaybe, catMaybes, mapMaybe)
 import UI.NCurses
+import Control.Monad (when)
 import Debug.Trace
 
 main :: IO ()
@@ -15,11 +16,13 @@ main = runCurses $ do
     setEcho False
     setCursorMode CursorInvisible
 
-    let initial = State { turn = Blues
-                        , cursor = (3, 3)
+    let initial = State { turn    = Blues
+                        , cursor  = (3, 3)
                         , figures = generateFigures
                         , isFixed = False
---                        , score = { Blues -> 0, Reds -> 0 }
+                        , aiTeam  = Reds
+                        , level   = 1
+                        , isDebug = True
                         }
 
     c0 <- newColorID ColorWhite ColorBlack $ toInteger idleBlack
@@ -30,17 +33,27 @@ main = runCurses $ do
     c5 <- newColorID ColorRed ColorWhite $ toInteger redWhite
 
     let colors = [defaultColorID, c0, c1, c2, c3, c4, c5]
-    w <- newWindow 26 44 0 0
 
-    loop w colors initial
+    win      <- newWindow 26 44 0 0
+    (sh, sw) <- screenSize
+    dwin     <- newWindow (sh - 28) sw 28 0
+
+    loop win dwin colors initial
         where
-            loop w colors state = do
-                update w colors state
-                e <- getEvent w Nothing
+            loop win dwin colors state = do
+                when (isDebug state) $ updateDebug dwin state
+                update win colors state
+                
+                when (turn state == aiTeam state) $ loop win dwin colors $ handleAI state
+                
+                e <- getEvent win Nothing
                 case e of
-                    Just (EventSpecialKey (KeyFunction 10)) -> return () -- closeWindow w
-                    Just e                                  -> loop w colors $ handleControl state e
-                    _                                       -> loop w colors state
+                    Just (EventSpecialKey (KeyFunction 10)) -> do
+                        cloneWindow win
+                        cloneWindow dwin
+                        return ()
+                    Just e                                  -> loop win dwin colors $ handleControl state e
+                    _                                       -> loop win dwin colors state
 
 
 update :: Window -> [ColorID] ->  State -> Curses ()
@@ -97,15 +110,19 @@ drawCell colors state (x, y) = do
                 Reds  -> setColor $ if isWhiteCell x y then colors!!redWhite else colors!!redBlack
             setAttribute AttributeBlink $ isSelected figure
             case fType figure of
-                King    -> drawString "███"
+--                King    -> drawString "███"
+                King    -> drawString (show x ++ (if figure `elem` snd (fromMaybe (state, []) $ turnResult state) then "X" else "█") ++ show y)
                 Checker -> do
-                    drawGlyph glyphBoard
-                    drawGlyph glyphBoard
-                    drawGlyph glyphBoard
+                    drawString (show x)
+                    if figure `elem` snd (fromMaybe (state, []) $ turnResult state) then drawString "X" else drawGlyph glyphBoard
+                    drawString (show y)
+--                    drawGlyph glyphBoard
+--                    drawGlyph glyphBoard
+--                    drawGlyph glyphBoard
             setAttribute AttributeBlink False
             setColor $ if isWhiteCell x y then colors!!idleWhite else colors!!idleBlack
-        -- TODO: Make it type safe (isTurnAllowed use head and falls on empty list). Now it is not a Haskell way
-        Nothing -> drawString $ if (any isSelected (figures state)) && (isJust $ turnResult (state { cursor = (x, y) })) then " + " else "   "
+        Nothing -> drawString $ if any isSelected (figures state) && isJust (turnResult (state {cursor = (x, y)})) then " + " else "   "
+--        Nothing -> drawString $ (show x ++ (if any isSelected (figures state) && isJust (turnResult (state {cursor = (x, y)})) then "+" else " ") ++ show y)
     if cursor state == (x, y)
         then drawGlyph glyphLineV
         else drawString " "
@@ -156,3 +173,37 @@ generateMaybeFigure x y
                                                            , isSelected = False
                                                            }
     | otherwise = Nothing
+
+
+-- DEBUG
+
+updateDebug :: Window -> State -> Curses ()
+updateDebug dw s = do
+    (sh, sw) <- screenSize
+    updateWindow dw $ drawDebug s sh sw
+    render
+
+
+dummyFigure :: (Int, Int) -> Figure
+dummyFigure c = Figure Blues Checker c False
+
+
+drawDebug :: State -> Integer -> Integer -> Update ()
+drawDebug s sh sw = do
+    clear
+    drawBorder Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+    moveCursor 0 (sw `quot` 2 - 3)
+    drawString " DEBUG "
+    moveCursor 2 2
+    drawString $ "Selected:\t" ++ show (getSelectedFigure s)
+    moveCursor 3 2
+    drawString $ "Cursor:\t" ++ show (cursor s)
+    moveCursor 4 2
+    drawString $ "Full path:\t" ++ show (fullPath (fCell $ fromMaybe (dummyFigure $ cursor s) $ getSelectedFigure s) (cursor s))
+    moveCursor 5 2
+    drawString $ "Path:\t\t" ++ show (fromMaybe [] $ getPath s)
+    moveCursor 6 2
+    drawString $ "Will eat:\t" ++ show (snd $ fromMaybe (s, []) $ turnResult s)
+    moveCursor 7 2
+    drawString $ "Can eat:\t" ++ show (map getSelectedFigure $ filter canEat $ mapMaybe (selectFigure s) (getTeamFigures s (turn s)))
+

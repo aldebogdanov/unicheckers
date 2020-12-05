@@ -1,6 +1,6 @@
 module State where
 
-import Data.Maybe (isNothing, isJust)
+import Data.Maybe (isNothing, isJust, catMaybes)
 import Data.Foldable (find)
 import UI.NCurses (Event(EventCharacter, EventSpecialKey), Key(..))
 import Debug.Trace
@@ -8,6 +8,8 @@ import Debug.Trace
 data FigureType = Checker | King deriving (Eq, Show)
 
 data Team = Reds | Blues deriving (Eq, Show)
+
+data GameStatus = Stopped | InProcess deriving (Eq, Show)
 
 type Cell = (Int, Int)
 type Cursor = Cell
@@ -18,21 +20,59 @@ data Figure = Figure { fTeam :: Team
                      , isSelected :: Bool
                      } deriving (Eq, Show)
 
-data State = State { turn    :: Team
-                   , cursor  :: Cursor
-                   , figures :: [Figure]
-                   , isFixed :: Bool
-                   , aiTeam  :: Team
-                   , level   :: Int
-                   , isDebug :: Bool
+data State = State { status    :: GameStatus
+                   , turn      :: Team
+                   , cursor    :: Cursor
+                   , figures   :: [Figure]
+                   , isFixed   :: Bool
+                   , aiTeam    :: Team
+                   , level     :: Int
+                   , winner    :: Maybe Team
+                   , inOptions :: Bool
+                   , option    :: Int
+                   , isDebug   :: Bool
                    } deriving (Show)
 
 
-handleControl :: State -> Event -> State
-handleControl state k = case k of
-    EventCharacter ' ' -> selectCell state
-    EventSpecialKey k  -> state { cursor = doCursorMove (cursor state) k }
-    _                  -> state
+handleOptionsControl :: State -> Event -> State
+handleOptionsControl s e = case e of
+    EventCharacter ' '         -> case option s of
+                                      0 -> s { aiTeam = nextTeam $ aiTeam s }
+                                      2 -> s { status = InProcess
+                                             , turn = Blues
+                                             , winner = Nothing
+                                             , figures = generateFigures
+                                             , inOptions = False
+                                             }
+                                      3 -> s { isDebug = not (isDebug s) }
+                                      _ -> s
+    EventSpecialKey KeyUpArrow    | option s > 0 -> s { option = option s - 1 }
+    EventSpecialKey KeyDownArrow  | option s < 3 -> s { option = option s + 1 }
+
+    EventSpecialKey KeyLeftArrow  | option s == 1 && level s > 1 -> s { level = level s - 1 }
+    EventSpecialKey KeyRightArrow | option s == 1 && level s < 3 -> s { level = level s + 1 }
+    _ -> s
+
+
+generateFigures :: [Figure]
+generateFigures = catMaybes $ [1..8] >>= \x -> [1..8] >>= \y -> return $ generateMaybeFigure x y
+
+
+generateMaybeFigure :: Int -> Int -> Maybe Figure
+generateMaybeFigure x y
+    | x /= 4 && x /= 5 && mod x 2 == mod y 2 = Just Figure { fTeam  = if x <=3 then Blues else Reds
+                                                           , fType  = Checker
+                                                           , fCell  = (x, y)
+                                                           , isSelected = False
+                                                           }
+    | otherwise = Nothing
+
+
+handleGameControl :: State -> Event -> State
+handleGameControl s e = case e of
+    EventCharacter ' ' -> selectCell s
+    EventSpecialKey k  -> s { cursor = doCursorMove (cursor s) k }
+    _                  -> s
 
 
 doCursorMove :: Cursor -> Key -> Cursor
@@ -184,8 +224,12 @@ determineType f = case (fTeam f, fst $ fCell f) of
     _          -> fType f
 
 
+getTeamFigures :: State -> Team -> [Figure]
+getTeamFigures s t = filter (\fig -> fTeam fig == t) $ figures s
+
+
 getCurrentTeamFigures :: State -> [Figure]
-getCurrentTeamFigures s = filter (\fig -> fTeam fig == turn s) $ figures s
+getCurrentTeamFigures s = getTeamFigures s (turn s)
 
 
 getDiagonalCells :: State -> [(Int, Int)]
