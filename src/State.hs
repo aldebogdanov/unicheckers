@@ -32,7 +32,7 @@ data State = State { status    :: GameStatus
                    , inOptions :: Bool
                    , option    :: Int
                    , isDebug   :: Bool
-                   , variants  :: [[(State, Int, Int)]]
+                   , variants  :: [([State], Int)]
                    }
 
 instance Show State where

@@ -3,54 +3,87 @@ module AI (
 ) where
 
 import State
-import Data.Maybe (catMaybes, mapMaybe)
+import Data.Maybe (mapMaybe)
 import System.Random
-import Control.Concurrent
 
+type History = [State]
 
+generator :: StdGen
 generator = mkStdGen 12  -- $ getClockTime >>= (\(TOD _ pico) -> return pico)
 
 
 handleAI :: State -> State
-handleAI s = newState
+handleAI s =
+    newState { status =    if isStop newState then Stopped else InProcess
+             , winner =    if isStop newState
+                           then Just (if isWin' newState then aiTeam newState else nextTeam $ aiTeam newState)
+                           else Nothing
+             , inOptions = isStop newState
+             }
   where
-    variants         = processStates [[(s, 0, 0)]] (level s * 2 - 1)
-    mx               = maximum $ map (\((_, ai, pl) : vs) -> ai - pl) variants
-    bestVars         = filter (\((_, ai, pl) : vs) -> ai - pl == mx) variants
+    vars             = calculateHistoryVariants [([s], 0)] (level s * 2 - 1)
+    maxRate          = maximum $ map snd vars
+    bestVars         = filter (\var -> snd var == maxRate) vars
     len              = length bestVars
     (rand, _)        = randomR (0, len - 1) generator
-    bestVar          = if len > 0 then init $ bestVars!!rand else init $ lastVar s
-    (ns1, _, _)      = last bestVar
-    (ns2, _, _)      = if checkWin ns1
-                       then (ns1 { status = Stopped, winner = Just $ turn s, inOptions = True }, 0, 0)
-                       else (ns1, 0, 0)
-    (newState, _, _) = (ns2 { lastVar = bestVar, variants = variants }, 0, 0)
+    (bestVar, _)     = bestVars!!rand 
+    newState         = if isStop s then s else last $ init bestVar
 
 
-checkWin :: State -> Bool
-checkWin s = null (getTeamFigures s Blues) || null (getTeamFigures s Reds)
+calculateHistoryVariants :: [(History, Int)] -> Int -> [(History, Int)]
+calculateHistoryVariants acc num = case num of
+    0                        -> acc
+    _ | any isWin acc        -> filter isWin acc
+    n | not $ all isLoss acc -> calculateHistoryVariants (filter (not . isLoss) acc >>= forkHistory) (n - 1)
+    _                        -> acc
 
 
-processStates :: [[(State, Int, Int)]] -> Int -> [[(State, Int, Int)]]
-processStates acc num = case num of
-    0 -> acc
-    n -> processStates (acc >>= processState) (n - 1)
+isStop :: State -> Bool
+isStop s = isWin' s || isLoss' s
+
+isWin' :: State -> Bool
+isWin' s = null $ getTeamFigures s $ nextTeam (aiTeam s)
+
+isWin :: (History, Int) -> Bool
+isWin hi = isWin' $ head $ fst hi
+
+isLoss' :: State -> Bool
+isLoss' s = null $ getTeamFigures s $ aiTeam s
+
+isLoss :: (History, Int) -> Bool
+isLoss hi = isLoss' $ head $ fst hi
 
 
-processState :: [(State, Int, Int)] -> [[(State, Int, Int)]]
-processState ss =
-    map (\(ns, eat) -> (if turn s == aiTeam s then (ns, aiEat + length eat, plEat) else (ns, aiEat, plEat + length eat)) : ss) newSs
+forkHistory :: (History, Int) -> [(History, Int)]
+forkHistory h = map (rate . (: h')) $ getCurrentTeamFigures (head h') >>= processFigure (head h')
   where
-    (s, aiEat, plEat) = head ss
-    figs              = getCurrentTeamFigures s
-    newSs             = figs >>= processFigure s
+    h' = fst h
 
 
-processFigure :: State -> Figure -> [(State, [Figure])]
+processFigure :: State -> Figure -> [State]
 processFigure s f = mapMaybe (processTurn s f) [(x, y) | x <- [1 .. 8], y <- [1 .. 8]]
 
 
-processTurn :: State -> Figure -> (Int, Int) -> Maybe (State, [Figure])
+processTurn :: State -> Figure -> (Int, Int) -> Maybe State
 processTurn s f c = do
-    ms <- selectFigure s f
-    turnResult (setCursor ms c)
+    ms      <- selectFigure s f
+    (ns, _) <- turnResult (setCursor ms c)
+    return ns
+
+
+rate :: History -> (History, Int)
+rate h =
+    (h, aiFsn - plFsn + (aiKsn - plKsn) * 2 + (if plFsn == 0 then 100 else 0) - (if aiFsn == 0 then 100 else 0))
+  where
+    s     = head h
+    t     = aiTeam s
+    aiFs  = getTeamFigures s t
+    plFs  = getTeamFigures s $ nextTeam t
+    aiFsn = length aiFs
+    plFsn = length plFs
+    aiKsn = kingsN aiFs
+    plKsn = kingsN plFs
+
+
+kingsN :: [Figure] -> Int
+kingsN fs = length $ filter (\f -> fType f == King) fs

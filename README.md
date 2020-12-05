@@ -6,15 +6,20 @@ Written in Haskell using `UI.Ncurses library` for frontend.
 Still bugly.
 
 Known issues:
-- Troubles on quit. It seems something with garbage collection;
+- Troubles on quit. Mouse clicking after (F10) exit produces chars in terminal;
 - Troubles with randomizer initialization;
 - Some questions about rules when King is eating;
-- Need to optimize and enhance AI;
+- If checker become King after eating turn is switching to another player regardless can this checker eat again or  not;
+- Need to more optimize and enhance AI;
 - Have to provide more debug information in debug window;
-- Mishmash with coordinates;
-- Code refactoring to become more Haskell-way is not bad idea.
+- Mismatch in coordinates;
 
 ### ChangeLog
+
+#### 0.0.9.3
+2020-12-06
+- AI refactored and little enhanced
+- Fixed bugs with zero sized variants list and negative list index 
 
 #### 0.0.9.2
 2020-12-05
