@@ -1,15 +1,13 @@
 ## Simple checkers game
 
 Console application to play checkers against the computer.
-Written in Haskell using `UI.Ncurses library` for frontend.
-
-Still some bugly.
+Written in `Haskell` using `UI.Ncurses library` for frontend.
 
 Known issues
 - Troubles on quit. Mouse clicking after (F10) exit produces chars in terminal
 - Troubles with randomizer initialization
 - Some questions about rules when King is eating
-- If checker become King after eating turn is switching to another player regardless can this checker eat again or  not
+- If checker become King after eating turn is switching to another player regardless can this checker eat again or not
 - AI is making redundand calculations even if the single turn is possible at the moment
 - Mismatch in coordinates
 
@@ -34,6 +32,6 @@ Features to develop:
 
 #### 0.0.9.2
 2020-12-05
-- Fixed win detection. Computer will finish game even if victory is already guaranteed
+- Fixed win detection. Computer will play until end even if victory is already guaranteed
 
 Aleksandr Bogdanov © 2020.
