@@ -1,9 +1,8 @@
 module State where
 
-import Data.Maybe (isNothing, isJust, catMaybes)
+import Data.Maybe (isJust, catMaybes)
 import Data.Foldable (find)
 import UI.NCurses (Event(EventCharacter, EventSpecialKey), Key(..))
-import Debug.Trace
 
 data FigureType = Checker | King deriving (Eq, Show)
 
@@ -55,7 +54,7 @@ handleOptionsControl s e = case e of
     EventSpecialKey KeyDownArrow  | option s < 3 -> s { option = option s + 1 }
 
     EventSpecialKey KeyLeftArrow  | option s == 1 && level s > 1 -> s { level = level s - 1 }
-    EventSpecialKey KeyRightArrow | option s == 1 && level s < 3 -> s { level = level s + 1 }
+    EventSpecialKey KeyRightArrow | option s == 1 && level s < 7 -> s { level = level s + 1 }
     _ -> s
 
 
@@ -104,10 +103,10 @@ setCursor s c = s { cursor = c }
 
 
 selectFigure :: State -> Figure -> Maybe State
-selectFigure s f = do
-    mf <- find (== f) $ figures s
+selectFigure s fig = do
+    mf <- find (== fig) $ figures s
     ms <- checkFixed s mf
-    return $ ms { figures = map (\ f -> f { isSelected = f == mf }) $ figures ms }
+    return $ ms { figures = map (\f -> f { isSelected = f == mf }) $ figures ms }
 
 
 checkFixed :: State -> Figure -> Maybe State
@@ -139,21 +138,21 @@ checkDiagonal s = do
 getPath :: State -> Maybe [(Int, Int)]
 getPath s = do
     ms     <- checkDiagonal s
-    ms     <- checkFreeCursor ms
-    mf     <- getSelectedFigure ms
+    ms'    <- checkFreeCursor ms
+    mf     <- getSelectedFigure ms'
     mfCell <- Just $ fCell mf
-    mc     <- Just $ cursor ms
+    mc     <- Just $ cursor ms'
     return $ filter (`notElem` [mc, mfCell]) $ fullPath mfCell mc
 
 
 fullPath :: (Int, Int) -> (Int, Int) -> [(Int, Int)]
-fullPath mfCell cursor = 
+fullPath mfCell c = 
     zip [xStart, xThen .. xEnd] [yStart, yThen .. yEnd]
   where
     xStart = fst mfCell
-    xEnd   = fst cursor
+    xEnd   = fst c
     yStart = snd mfCell
-    yEnd   = snd cursor
+    yEnd   = snd c
     xThen  = if xStart > xEnd then xStart - 1 else xStart + 1
     yThen  = if yStart > yEnd then yStart - 1 else yStart + 1
 
@@ -171,8 +170,8 @@ checkPath s = do
     md    <- getDistance s
     ms    <- checkNoFriendly s mp
     me    <- getEaten ms mp
-    ms    <- checkDirection ms me mf
-    r ms mf md me
+    ms'   <- checkDirection ms me mf
+    r ms' mf md me
   where
     r ms mf md me | length me > 1                                    = Nothing
                   | null me && md /= 1 && fType mf == Checker        = Nothing
@@ -218,7 +217,7 @@ updateState (s, es) = s { turn = newTurn, figures = newFigures, isFixed = newIsF
     newFigsDisposition = map (\f -> if isSelected f then f { fCell = cursor s } else f) notEatenFigs
     canEatAgain        = not (null es) && (canEat $ s {figures = newFigsDisposition}) && (canEat $ s { figures = newFigsDisposition })
     newIsFixed         = canEatAgain
-    newTurn            = if canEatAgain then turn s else nextTurn s
+    newTurn            = if canEatAgain then turn s else nextTurnTeam s
     newFigures         = map (\f -> f { isSelected = newIsFixed && isSelected f, fType = determineType f }) newFigsDisposition
 
 
@@ -244,7 +243,7 @@ getDiagonalCells s = filter (\(x, y) -> isJust $ checkDiagonal $ setCursor s (x,
 anyCanEat :: State -> Bool
 anyCanEat s = any (can s) $ getCurrentTeamFigures s
   where
-    can s f = maybe False canEat (selectFigure s f)
+    can s' f = maybe False canEat (selectFigure s' f)
 
 
 canEat :: State -> Bool
@@ -253,15 +252,15 @@ canEat s = any (isEating . setCursor s) $ getDiagonalCells s
 
 isEating :: State -> Bool
 isEating s = case checkPath s of
-   Nothing                       -> False
-   Just (s', es) | not (null es) -> True
-   _                             -> False
+   Nothing                      -> False
+   Just (_, es) | not (null es) -> True
+   _                            -> False
 
 
 handleTurn :: State -> State
 handleTurn s = case turnResult s of
     Nothing       -> s
-    Just (ns, en) -> ns
+    Just (ns, _) -> ns
 
 
 getRangeBetween :: Int -> Int -> [Int]
@@ -271,8 +270,8 @@ getRangeBetween a b
     | otherwise = [(a - 1)..(b + 1)]
 
 
-nextTurn :: State -> Team
-nextTurn state = nextTeam $ turn state
+nextTurnTeam :: State -> Team
+nextTurnTeam state = nextTeam $ turn state
 
 
 nextTeam :: Team -> Team

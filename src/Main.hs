@@ -3,13 +3,11 @@ module Main (
 ) where
 
 import AI
-import System.Exit (die)
 import State
 import Data.Foldable (find)
-import Data.Maybe (isJust, isNothing, fromMaybe, mapMaybe, listToMaybe)
+import Data.Maybe (isJust, fromMaybe, mapMaybe)
 import UI.NCurses
 import Control.Monad (when)
-import Debug.Trace
 
 main :: IO ()
 main = runCurses $ do
@@ -64,10 +62,10 @@ main = runCurses $ do
                         closeWindow dwin
                         return ()
                     Just (EventCharacter '\t') -> loop win owin dwin colors $ state { inOptions = not (inOptions state) }
-                    Just e                     -> loop win owin dwin colors $
+                    Just e'                    -> loop win owin dwin colors $
                                                   if inOptions state
-                                                      then handleOptionsControl state e
-                                                      else handleGameControl state e
+                                                      then handleOptionsControl state e'
+                                                      else handleGameControl state e'
                     _                          -> loop win owin dwin colors state
 
 
@@ -263,9 +261,9 @@ drawTeamString s t  | aiTeam s == t = case winner s of
 
 updateDebug :: Window -> State -> Curses ()
 updateDebug dw s = do
-    (sh, sw) <- screenSize
+    (_, sw) <- screenSize
     updateWindow dw clear
-    when (isDebug s) $ updateWindow dw $ drawDebug s sh sw
+    when (isDebug s) $ updateWindow dw $ drawDebug s sw
     render
 
 
@@ -273,8 +271,8 @@ dummyFigure :: (Int, Int) -> Figure
 dummyFigure c = Figure Blues Checker c False
 
 
-drawDebug :: State -> Integer -> Integer -> Update ()
-drawDebug s sh sw = do
+drawDebug :: State -> Integer -> Update ()
+drawDebug s sw = do
     clear
     drawBorder Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
     moveCursor 0 (sw `quot` 2 - 3)

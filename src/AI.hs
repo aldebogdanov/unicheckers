@@ -5,6 +5,7 @@ module AI (
 import State
 import Data.Maybe (mapMaybe)
 import System.Random
+import GHC.Conc.Sync
 
 type History = [State]
 
@@ -32,10 +33,34 @@ handleAI s =
 
 calculateHistoryVariants :: [(History, Int)] -> Int -> [(History, Int)]
 calculateHistoryVariants acc num = case num of
-    0                        -> acc
-    _ | any isWin acc        -> filter isWin acc
-    n | not $ all isLoss acc -> calculateHistoryVariants (filter (not . isLoss) acc >>= forkHistory) (n - 1)
-    _                        -> acc
+    0                                                         -> acc
+--    n | length acc == 1 && n == level (head $ fst $ head acc) -> acc
+    _ | any isWin acc                                         -> filter isWin acc
+    n | not $ all isLoss acc                                  -> 
+        calculateHistoryVariants (forkHistoryChunks (filteredVariants acc) $ getChunkSize acc) (n - 1)
+    _                                                         -> acc
+
+
+filteredVariants :: [(History, Int)] -> [(History, Int)]
+filteredVariants vars = if any (\var -> snd var > 0) vars then filter (\var -> snd var > (maxRate `div` 2)) vars else vars
+  where
+    maxRate = maximum $ map snd vars
+
+
+threadsNum :: Int
+threadsNum = 7
+
+
+getChunkSize :: [a] -> Int
+getChunkSize l = length l `div` threadsNum + 1
+
+
+forkHistoryChunks :: [(History, Int)] -> Int -> [(History, Int)]
+forkHistoryChunks [] _ = []
+forkHistoryChunks hs n = par hs1 (hs1 ++ hs2)
+  where
+    hs1 = take n hs >>= forkHistory
+    hs2 = forkHistoryChunks (drop n hs) n
 
 
 isStop :: State -> Bool
