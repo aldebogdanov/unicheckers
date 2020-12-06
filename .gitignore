@@ -1,4 +1,5 @@
 .stack-work
 .idea
-dist-newstyle
+dist-newstyle/
 *.iml
+out/
