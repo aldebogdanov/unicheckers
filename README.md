@@ -3,9 +3,9 @@
 Console application to play checkers against the computer.
 Written in `Haskell` using `UI.Ncurses library` for frontend.
 
-Application can be configured with unicheckers.conf file.
-You can use also /etc/unicheckers.conf file that will be overwritten by the local one.
-Config example with default values (which will be used even without .conf file) is in repository. 
+Application can be configured with `unicheckers.conf` file.
+You can use also `/etc/unicheckers.conf` file that will be overwritten by the local one.
+Config example with default values (which will be used even without `.conf` file) is in repository. 
 
 Known issues
 - Troubles on quit. Mouse clicking after (F10) exit produces chars in terminal
