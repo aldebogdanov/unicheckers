@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: unicheckers
-version: 0.0.9.4
+version: 0.0.9.5
 build-type: Simple
 license: BSD-3-Clause
 description:
@@ -13,11 +13,19 @@ executable unicheckers
         ansi-terminal ==0.11,
         ncurses ==0.2.16,
         random ==1.2.0,
+        fast-logger ==3.0.2,
+        bytestring ==0.10.12.0,
+        iso8601-time ==0.1.5,
+        time ==1.9.3,
+        configurator ==0.3.0.0,
+        text ==1.2.4.0,
         base -any
     default-language: Haskell2010
     hs-source-dirs: src
     other-modules:
         AI
         State
-    ghc-options:  -Wall -Wno-unused-do-bind -threaded -rtsopts -with-rtsopts=-N -O2
+        Logger
+        Config
+    ghc-options: -XBangPatterns -Wall -Wno-unused-do-bind -threaded -rtsopts -with-rtsopts=-N -O2
 

@@ -3,12 +3,16 @@ module State where
 import Data.Maybe (isJust, catMaybes)
 import Data.Foldable (find)
 import UI.NCurses (Event(EventCharacter, EventSpecialKey), Key(..))
+import Logger
+import Config
 
 data FigureType = Checker | King deriving (Eq, Show)
 
 data Team = Reds | Blues deriving (Eq, Show)
 
 data GameStatus = Stopped | InProcess deriving (Eq, Show)
+
+type History = [State]
 
 type Cell = (Int, Int)
 type Cursor = Cell
@@ -17,25 +21,31 @@ data Figure = Figure { fTeam :: Team
                      , fType :: FigureType
                      , fCell :: Cell
                      , isSelected :: Bool
-                     } deriving (Eq, Show)
+                     } deriving (Show)
+instance Eq Figure where
+  (==) f1 f2 = fTeam f1 == fTeam f2 && fType f1 == fType f2 && fCell f1 == fCell f2
+  (/=) f1 f2 = not (f1 == f2)
 
 data State = State { status    :: GameStatus
-                   , lastVar   :: [(State, Int, Int)]
                    , turn      :: Team
                    , cursor    :: Cursor
                    , figures   :: [Figure]
                    , isFixed   :: Bool
                    , aiTeam    :: Team
+                   , aiCache   :: [History]
                    , level     :: Int
                    , winner    :: Maybe Team
                    , inOptions :: Bool
                    , option    :: Int
                    , isDebug   :: Bool
-                   , variants  :: [([State], Int)]
                    }
 
 instance Show State where
-    show (State st _ t _ fs _ _ _ _ _ _ _ vs) = "<" ++ show st ++ ", " ++ show t ++ ", " ++ show (length fs) ++ " figures, " ++ show (length vs) ++ " variants>"
+    show (State st t c fs _ _ _ _ _ _ _ _) = 
+        "<" ++ show st ++ ", " ++ show t ++ ", " ++ 
+            show (length $ filter (\f -> fTeam f == Blues) fs) ++ "/" ++ 
+            show (length $ filter (\f -> fTeam f == Reds) fs) ++ 
+            " figures, cursor: " ++ show c ++ ">"
 
 
 handleOptionsControl :: State -> Event -> State
@@ -53,13 +63,14 @@ handleOptionsControl s e = case e of
     EventSpecialKey KeyUpArrow    | option s > 0 -> s { option = option s - 1 }
     EventSpecialKey KeyDownArrow  | option s < 3 -> s { option = option s + 1 }
 
-    EventSpecialKey KeyLeftArrow  | option s == 1 && level s > 1 -> s { level = level s - 1 }
-    EventSpecialKey KeyRightArrow | option s == 1 && level s < 7 -> s { level = level s + 1 }
+    EventSpecialKey KeyLeftArrow  | option s == 1 && level s > 1               -> s { level = level s - 1 }
+    EventSpecialKey KeyRightArrow | option s == 1 && level s < maxLevel config -> s { level = level s + 1 }
     _ -> s
 
 
 generateFigures :: [Figure]
-generateFigures = catMaybes $ [1..8] >>= \x -> [1..8] >>= \y -> return $ generateMaybeFigure x y
+generateFigures = writeLog "------------------ New game initiated" $
+                      catMaybes $ [1..8] >>= \x -> [1..8] >>= \y -> return $ generateMaybeFigure x y
 
 
 generateMaybeFigure :: Int -> Int -> Maybe Figure

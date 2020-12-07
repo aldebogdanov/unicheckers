@@ -9,24 +9,24 @@ import Data.Maybe (isJust, fromMaybe, mapMaybe)
 import UI.NCurses
 import Control.Monad (when)
 
+
 main :: IO ()
 main = runCurses $ do
     setEcho False
     setCursorMode CursorInvisible
 
     let initial = State { status    = Stopped
-                        , lastVar   = []
                         , turn      = Blues
                         , cursor    = (3, 3)
                         , figures   = [] -- generateFigures
                         , isFixed   = False
                         , aiTeam    = Reds
+                        , aiCache   = []
                         , level     = 1
                         , winner    = Nothing
                         , inOptions = True
                         , option    = 2
                         , isDebug   = False
-                        , variants  = []
                         }
 
     c0 <- newColorID ColorWhite ColorBlack $ toInteger idleBlack
@@ -229,7 +229,7 @@ drawOptions colors s = do
     moveCursor 8 12
     drawString $ "Level: " ++ show (level s)
     setColor $ if option s == 2 then colors!!idleWhite else colors!!idleBlack
-    moveCursor 10 2
+    moveCursor 23 2
     drawString "          New Game          "
     setColor $ if option s == 3 then colors!!idleWhite else colors!!idleBlack
     moveCursor 25 2
@@ -290,6 +290,4 @@ drawDebug s sw = do
     moveCursor 7 2
     drawString $ "Can eat:\t" ++ show (map getSelectedFigure $ filter canEat $ mapMaybe (selectFigure s) (getCurrentTeamFigures s))
     moveCursor 8 2
-    drawString $ "Variants num:\t" ++ show (length $ variants s)
---    moveCursor 9 2
---    drawString $ "Sample variant:\t" ++ show (listToMaybe $ variants s)
+    drawString $ "Cached:\t" ++ show (length $ aiCache s) -- ++ "\t" ++ show (aiCache s)
