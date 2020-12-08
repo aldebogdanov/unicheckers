@@ -1,21 +1,22 @@
+{-# LANGUAGE NoImplicitPrelude #-}
 module AI (
   handleAI
 ) where
 
-import State
+import Relude
+import Data.List (groupBy)
+import GameState
 import Logger
 import Config
-import Data.Maybe (mapMaybe)
 import System.Random
 import GHC.Conc.Sync
-import Data.List
 
 
 generator :: StdGen
 generator = mkStdGen 12  -- $ getClockTime >>= (\(TOD _ pico) -> return pico)
 
 
-handleAI :: State -> State
+handleAI :: GameState -> GameState
 handleAI s =
     newState { status    = if isStop newState then Stopped else InProcess
              , winner    = if isStop newState
@@ -26,14 +27,18 @@ handleAI s =
   where
     cached           = readCache s
     vars             = calculateHistoryVariants (fst cached) ((level s * 2) - snd cached)
-    maxRate          = writeLogShow "MAXIMUM:\t" $ maximum $ map snd vars -- Exception returned on empty list? Rly?
-    !_               = writeLogUnsafe $ "VARIANTS:\n" ++ showVariants vars
-    bestVars         = filter (\var -> snd var == maxRate) vars
-    !_               = writeLogUnsafe $ "BEST VARIANTS:\n" ++ showVariants bestVars
-    len              = writeLogShow "BESTVARS NUM:\t" $ length bestVars
+    !_               = writeLogUnsafe $ "VARIANTS:\n" <> showVariants vars
+    maxRateMaybe     = viaNonEmpty last (sort $ map snd vars)
+    bestVars         = case maxRateMaybe of
+                           Just mr -> filter (\var -> snd var == mr) vars
+                           Nothing -> vars
+    !_               = writeLogUnsafe $ "MAXIMUM:\t" <> show maxRateMaybe
+    !_               = writeLogUnsafe $ "BEST VARIANTS:\t" <> showVariants bestVars
+    len              = length bestVars
+    !_               = writeLogUnsafe $ "BESTVARS NUM:\t" <> show len
     (rand, _)        = randomR (0, len - 1) generator
-    (bestVar, _)     = if null bestVars then ([s], 0) else bestVars!!rand 
-    ns               = if isStop s then s else last $ init bestVar
+    (bestVar, _)     = fromMaybe ([s], 0) (bestVars !!? rand)
+    ns               = if isStop s then s else fromMaybe s (viaNonEmpty init bestVar >>= viaNonEmpty last)
     newState         = ns { aiCache = buildCache vars ns }
 
 
@@ -43,21 +48,16 @@ calculateHistoryVariants acc num = h
     h = case num of
         0                                                         -> acc
         _ | all isWin acc                                         ->
-            writeLog ("(any is win) HISTORY expanded to " ++ show (length acc) ++ " variants") acc
+            writeLog ("(any is win) HISTORY expanded to " <> show (length acc) <> " variants") acc
         _ | length acc >= threshold config                        ->
-            writeLog ("(threshold) HISTORY expanded to " ++ show (length acc) ++ " variants") acc
+            writeLog ("(threshold) HISTORY expanded to " <> show (length acc) <> " variants") acc
         n | not $ all isLoss acc                                  ->
-            calculateHistoryVariants (forkHistoryChunks (filteredVariants acc) $ getChunkSize acc) (n - 1)
+            calculateHistoryVariants (forkHistoryChunks acc $ getChunkSize acc) (n - 1)
         _                                                         ->
-            writeLog ("(any is loss) HISTORY expanded to " ++ show (length acc) ++ " variants") acc
+            writeLog ("(any is loss) HISTORY expanded to " <> show (length acc) <> " variants") acc
     !_ = case num of
-        0 -> writeLogUnsafe $ "HISTORY expanded to " ++ show (length acc) ++ " variants"
-        _ -> writeLogUnsafe $ "HISTORY expanded (level " ++ show num ++ ") from " ++ show (length acc) ++ " variants"
-
-filteredVariants :: [(History, Int)] -> [(History, Int)]
-filteredVariants vars = if any (\var -> snd var > 0) vars then filter (\var -> snd var > (maxRate `div` 2)) vars else vars
-  where
-    maxRate = maximum $ map snd vars
+        0 -> writeLogUnsafe $ "HISTORY expanded to " <> show (length acc) <> " variants"
+        _ -> writeLogUnsafe $ "HISTORY expanded (level " <> show num <> ") from " <> show (length acc) <> " variants"
 
 
 getChunkSize :: [a] -> Int
@@ -72,34 +72,37 @@ forkHistoryChunks hs n = par hs1 (hs1 ++ hs2)
     hs2 = forkHistoryChunks (drop n hs) n
 
 
-isStop :: State -> Bool
+isStop :: GameState -> Bool
 isStop s = isWin' s || isLoss' s
 
-isWin' :: State -> Bool
+isWin' :: GameState -> Bool
 isWin' s = null $ getTeamFigures s $ nextTeam (aiTeam s)
 
 isWin :: (History, Int) -> Bool
-isWin hi = isWin' $ head $ fst hi
+isWin hi = maybe False isWin' $ viaNonEmpty head $ fst hi
 
-isLoss' :: State -> Bool
+isLoss' :: GameState -> Bool
 isLoss' s = null $ getTeamFigures s $ aiTeam s
 
 isLoss :: (History, Int) -> Bool
-isLoss hi = isLoss' $ head $ fst hi
+isLoss hi = maybe False isLoss' $ viaNonEmpty head $ fst hi
 
 
 forkHistory :: (History, Int) -> [(History, Int)]
 forkHistory h = hs
   where
     h' = fst h
-    hs = map (rate . (: h')) $ getCurrentTeamFigures (head h') >>= processFigure (head h')
+    s  = viaNonEmpty head h'
+    hs = case s of
+        Nothing -> []
+        Just s' -> map (rate . (: h')) $ getCurrentTeamFigures s' >>= processFigure s'
 
 
-processFigure :: State -> Figure -> [State]
+processFigure :: GameState -> Figure -> [GameState]
 processFigure s f = mapMaybe (processTurn s f) [(x, y) | x <- [1 .. 8], y <- [1 .. 8]]
 
 
-processTurn :: State -> Figure -> (Int, Int) -> Maybe State
+processTurn :: GameState -> Figure -> (Int, Int) -> Maybe GameState
 processTurn s f c = do
     ms      <- selectFigure s f
     (ns, _) <- turnResult (setCursor ms c)
@@ -107,57 +110,67 @@ processTurn s f c = do
 
 
 rate :: History -> (History, Int)
-rate h =
-    (h, aiFsn - plFsn + (aiKsn - plKsn) * 2 + (if plFsn == 0 then 100 else 0) - (if aiFsn == 0 then 100 else 0))
-  where
-    s     = head h
-    t     = aiTeam s
-    aiFs  = getTeamFigures s t
-    plFs  = getTeamFigures s $ nextTeam t
-    aiFsn = length aiFs
-    plFsn = length plFs
-    aiKsn = kingsN aiFs
-    plKsn = kingsN plFs
+rate h = case do
+    s     <- viaNonEmpty head h
+    t     <- Just $ aiTeam s
+    aiFs  <- Just $ getTeamFigures s t
+    plFs  <- Just $ getTeamFigures s $ nextTeam t
+    aiFsn <- Just $ length aiFs
+    plFsn <- Just $ length plFs
+    aiKsn <- Just $ kingsN aiFs
+    plKsn <- Just $ kingsN plFs
+    return (aiFsn - plFsn + (aiKsn - plKsn) * 2 + (if plFsn == 0 then 100 else 0) - (if aiFsn == 0 then 100 else 0))
+  of
+    Nothing -> ([], 0)
+    Just r  -> (h, r)
 
 
 kingsN :: [Figure] -> Int
 kingsN fs = length $ filter (\f -> fType f == King) fs
 
 
-buildCache :: [(History, Int)] -> State -> [History]
+buildCache :: [(History, Int)] -> GameState -> [History]
 buildCache vars ns =
-    writeLog ("CACHE builded: " ++ show (length cache) ++ " variants of depth " ++
-                  show (if null cache then 0 else length $ head cache)
+    writeLog ("CACHE builded: " <> show (length cache) <> " variants of depth " <>
+                  show (maybe 0 length (viaNonEmpty head cache))
              ) cache
   where
-    cache = mapMaybe (\(var, _) -> if length var > 1 && compareTurns (last $ init var) ns
-                                   then Just (take (length var - (if isFixed ns then 1 else 2)) var)
-                                   else Nothing
+    cache = mapMaybe (\(var, _) -> case viaNonEmpty init var >>= viaNonEmpty last of
+                                       Just turnDone | compareTurns turnDone ns
+                                           -> Just (take (length var - (if isFixed ns then 1 else 2)) var)
+                                       _   -> Nothing
                      ) vars
 
 
-readCache :: State -> ([(History, Int)], Int)
-readCache s = writeLog ("CACHE readed: " ++ show (length cached) ++ " variants of depth " ++
-                            show (if null cached then 0 else length $ fst (head cached))) $
-              case cached of
-                  [] -> ([([s], 0)], 0)
-                  _  -> (cached, length $ fst (head cached))
-              where
-                cached = mapMaybe (\var -> if length var > 1 && compareTurns (last var) s
-                                           then Just (var, 0)
-                                           else Nothing
-                                  ) $ aiCache s
+readCache :: GameState -> ([(History, Int)], Int)
+readCache s = writeLog ("CACHE readed: " <> show (length cached) <> " variants of depth " <>
+                            show (case viaNonEmpty head cached of
+                                      Nothing        -> 0
+                                      Just cacheItem -> length (fst cacheItem))
+                       )$
+              case viaNonEmpty head cached of
+                  Nothing -> ([([s], 0)], 0)
+                  Just hc -> (cached, length $ fst hc)
+            where
+              cached = mapMaybe (\var -> case viaNonEmpty last var of
+                                             Just lastState | compareTurns lastState s -> Just (var, 0)
+                                             _                                         -> Nothing
 
 
-compareTurns :: State -> State -> Bool
+                                ) $ aiCache s
+
+
+compareTurns :: GameState -> GameState -> Bool
 compareTurns s1 s2 = figures s1 == figures s2 && turn s1 == turn s2
---compareTurns s1 s2 = cursor s1 == cursor s2 && getSelectedFigure s1 == getSelectedFigure s2
 
 
-showVariants :: [([State], Int)] -> String
-showVariants vs = intercalate ", " $ map (\gr -> show (snd gr) ++ ": " ++ show (fst gr)) ratedGroups
+showVariants :: [([GameState], Int)] -> Text
+showVariants vs = if not $ loggingOn config then "" else toText $ intercalate ", " $ map (\gr -> show (snd gr) ++ ": " ++ show (fst gr)) ratedGroups
   where
-    eq a b      = snd a == snd b
     cmp a b     = compare (snd a) (snd b)
+    eq a b      = snd a == snd b
     groups      = groupBy eq (sortBy cmp vs)
-    ratedGroups = map (\gr -> (length gr, snd $ head gr)) groups
+    ratedGroups = map (\gr -> (length gr, case viaNonEmpty head gr of
+                                              Just (_, r)    -> r
+                                              Nothing        -> 0)
+                      ) groups

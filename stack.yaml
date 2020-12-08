@@ -41,6 +41,7 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
+  - relude-0.7.0.0
   - QuickCheck-2.14.2
   - ansi-terminal-0.11
   - random-1.2.0

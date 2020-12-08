@@ -1,18 +1,21 @@
-module State where
+{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE DeriveAnyClass #-}
+module GameState where
 
-import Data.Maybe (isJust, catMaybes)
-import Data.Foldable (find)
+import Relude
+--import Data.Maybe (isJust, catMaybes)
+--import Data.Foldable (find)
 import UI.NCurses (Event(EventCharacter, EventSpecialKey), Key(..))
 import Logger
 import Config
 
 data FigureType = Checker | King deriving (Eq, Show)
 
-data Team = Reds | Blues deriving (Eq, Show)
+data Team = Reds | Blues deriving (Eq, Show, ToText)
 
-data GameStatus = Stopped | InProcess deriving (Eq, Show)
+data GameStatus = Stopped | InProcess deriving (Eq, Show, ToText)
 
-type History = [State]
+type History = [GameState]
 
 type Cell = (Int, Int)
 type Cursor = Cell
@@ -22,11 +25,12 @@ data Figure = Figure { fTeam :: Team
                      , fCell :: Cell
                      , isSelected :: Bool
                      } deriving (Show)
+
 instance Eq Figure where
   (==) f1 f2 = fTeam f1 == fTeam f2 && fType f1 == fType f2 && fCell f1 == fCell f2
   (/=) f1 f2 = not (f1 == f2)
 
-data State = State { status    :: GameStatus
+data GameState = GameState { status    :: GameStatus
                    , turn      :: Team
                    , cursor    :: Cursor
                    , figures   :: [Figure]
@@ -38,17 +42,17 @@ data State = State { status    :: GameStatus
                    , inOptions :: Bool
                    , option    :: Int
                    , isDebug   :: Bool
-                   }
+                   } deriving (Eq)
 
-instance Show State where
-    show (State st t c fs _ _ _ _ _ _ _ _) = 
-        "<" ++ show st ++ ", " ++ show t ++ ", " ++ 
-            show (length $ filter (\f -> fTeam f == Blues) fs) ++ "/" ++ 
-            show (length $ filter (\f -> fTeam f == Reds) fs) ++ 
-            " figures, cursor: " ++ show c ++ ">"
+instance ToText GameState where
+    toText (GameState st t c fs _ _ _ _ _ _ _ _) = 
+        "<" <> toText st <> ", " <> toText t <> ", " <>
+            show (length $ filter (\f -> fTeam f == Blues) fs) <> "/" <>
+            show (length $ filter (\f -> fTeam f == Reds) fs) <>
+            " figures, cursor: " <> show c <> ">"
 
 
-handleOptionsControl :: State -> Event -> State
+handleOptionsControl :: GameState -> Event -> GameState
 handleOptionsControl s e = case e of
     EventCharacter ' '         -> case option s of
                                       0 -> s { aiTeam = nextTeam $ aiTeam s }
@@ -83,7 +87,7 @@ generateMaybeFigure x y
     | otherwise = Nothing
 
 
-handleGameControl :: State -> Event -> State
+handleGameControl :: GameState -> Event -> GameState
 handleGameControl s e = case e of
     EventCharacter ' ' -> selectCell s
     EventSpecialKey k  -> s { cursor = doCursorMove (cursor s) k }
@@ -99,7 +103,7 @@ doCursorMove c k = case k of
     _             -> c
 
 
-selectCell :: State -> State
+selectCell :: GameState -> GameState
 selectCell s = case getFigure s of
     Just f | not (isFixed s) && fTeam f == turn s && isSelected f -> s { figures = map (\fig -> fig { isSelected = False }) $ figures s }
     Just f | not (isFixed s) && fTeam f == turn s                 -> s { figures = map (\fig -> fig { isSelected = fCell fig == cursor s }) $ figures s }
@@ -109,18 +113,18 @@ selectCell s = case getFigure s of
         Nothing -> s
 
 
-setCursor :: State -> (Int, Int) -> State
+setCursor :: GameState -> (Int, Int) -> GameState
 setCursor s c = s { cursor = c }
 
 
-selectFigure :: State -> Figure -> Maybe State
+selectFigure :: GameState -> Figure -> Maybe GameState
 selectFigure s fig = do
     mf <- find (== fig) $ figures s
     ms <- checkFixed s mf
     return $ ms { figures = map (\f -> f { isSelected = f == mf }) $ figures ms }
 
 
-checkFixed :: State -> Figure -> Maybe State
+checkFixed :: GameState -> Figure -> Maybe GameState
 checkFixed s f = if isFixed s && another then Nothing else Just s
   where
     another = case getSelectedFigure s of
@@ -128,25 +132,25 @@ checkFixed s f = if isFixed s && another then Nothing else Just s
         Just fig -> fig /= f
 
 
-getFigure :: State -> Maybe Figure
+getFigure :: GameState -> Maybe Figure
 getFigure s = find (\f -> fCell f == cursor s) $ figures s
 
 
-getSelectedFigure :: State -> Maybe Figure
+getSelectedFigure :: GameState -> Maybe Figure
 getSelectedFigure s = find isSelected $ figures s
 
 
-checkFreeCursor :: State -> Maybe State
+checkFreeCursor :: GameState -> Maybe GameState
 checkFreeCursor s = if not $ any (\f -> fCell f == cursor s) $ figures s then Just s else Nothing
 
 
-checkDiagonal :: State -> Maybe State
+checkDiagonal :: GameState -> Maybe GameState
 checkDiagonal s = do
     mf <- getSelectedFigure s
     if abs (fst (fCell mf) - fst (cursor s)) == abs (snd (fCell mf) - snd (cursor s)) then Just s else Nothing
 
 
-getPath :: State -> Maybe [(Int, Int)]
+getPath :: GameState -> Maybe [(Int, Int)]
 getPath s = do
     ms     <- checkDiagonal s
     ms'    <- checkFreeCursor ms
@@ -168,13 +172,13 @@ fullPath mfCell c =
     yThen  = if yStart > yEnd then yStart - 1 else yStart + 1
 
 
-getDistance :: State -> Maybe Int
+getDistance :: GameState -> Maybe Int
 getDistance s = do
     mp <- getPath s
     return $ length mp + 1
 
 
-checkPath :: State -> Maybe (State, [Figure])
+checkPath :: GameState -> Maybe (GameState, [Figure])
 checkPath s = do
     mp    <- getPath s
     mf    <- getSelectedFigure s
@@ -190,7 +194,7 @@ checkPath s = do
                   | otherwise                                        = Just (ms, me)
 
 
-checkDirection :: State -> [Figure] -> Figure -> Maybe State
+checkDirection :: GameState -> [Figure] -> Figure -> Maybe GameState
 checkDirection s es f = case fType f of
     King                    -> Just s
     Checker | not (null es) -> Just s
@@ -202,17 +206,17 @@ checkDirection s es f = case fType f of
         direction = fst (cursor s) - fst (fCell f)
 
 
-checkNoFriendly :: State -> [(Int, Int)] -> Maybe State
+checkNoFriendly :: GameState -> [(Int, Int)] -> Maybe GameState
 checkNoFriendly s p
     | not $ any (\f -> fTeam f == turn s && elem (fCell f) p) (figures s) = Just s
     | otherwise                                                           = Nothing
 
 
-getEaten :: State -> [(Int, Int)] -> Maybe [Figure]
+getEaten :: GameState -> [(Int, Int)] -> Maybe [Figure]
 getEaten s p = Just $ filter (\f -> fTeam f == nextTeam (turn s) && elem (fCell f) p) $ figures s
 
 
-turnResult :: State -> Maybe (State, [Figure])
+turnResult :: GameState -> Maybe (GameState, [Figure])
 turnResult s = do
     mr <- checkPath s
     tr mr
@@ -221,7 +225,7 @@ turnResult s = do
           | otherwise                    = Just (updateState mr, snd mr)
 
 
-updateState :: (State, [Figure]) -> State
+updateState :: (GameState, [Figure]) -> GameState
 updateState (s, es) = s { turn = newTurn, figures = newFigures, isFixed = newIsFixed }
   where
     notEatenFigs       = filter (`notElem` es) $ figures s
@@ -239,36 +243,36 @@ determineType f = case (fTeam f, fst $ fCell f) of
     _          -> fType f
 
 
-getTeamFigures :: State -> Team -> [Figure]
+getTeamFigures :: GameState -> Team -> [Figure]
 getTeamFigures s t = filter (\fig -> fTeam fig == t) $ figures s
 
 
-getCurrentTeamFigures :: State -> [Figure]
+getCurrentTeamFigures :: GameState -> [Figure]
 getCurrentTeamFigures s = getTeamFigures s (turn s)
 
 
-getDiagonalCells :: State -> [(Int, Int)]
+getDiagonalCells :: GameState -> [(Int, Int)]
 getDiagonalCells s = filter (\(x, y) -> isJust $ checkDiagonal $ setCursor s (x, y)) [ (x, y) | x <- [1..8], y <- [1..8] ]
 
 
-anyCanEat :: State -> Bool
+anyCanEat :: GameState -> Bool
 anyCanEat s = any (can s) $ getCurrentTeamFigures s
   where
     can s' f = maybe False canEat (selectFigure s' f)
 
 
-canEat :: State -> Bool
+canEat :: GameState -> Bool
 canEat s = any (isEating . setCursor s) $ getDiagonalCells s
 
 
-isEating :: State -> Bool
+isEating :: GameState -> Bool
 isEating s = case checkPath s of
    Nothing                      -> False
    Just (_, es) | not (null es) -> True
    _                            -> False
 
 
-handleTurn :: State -> State
+handleTurn :: GameState -> GameState
 handleTurn s = case turnResult s of
     Nothing       -> s
     Just (ns, _) -> ns
@@ -281,8 +285,8 @@ getRangeBetween a b
     | otherwise = [(a - 1)..(b + 1)]
 
 
-nextTurnTeam :: State -> Team
-nextTurnTeam state = nextTeam $ turn state
+nextTurnTeam :: GameState -> Team
+nextTurnTeam s = nextTeam $ turn s
 
 
 nextTeam :: Team -> Team

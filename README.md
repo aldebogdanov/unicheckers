@@ -21,6 +21,11 @@ Features to improve:
 
 ### ChangeLog
 
+#### 0.0.9.6
+2020-12-08
+- Migrated to Relude
+- Removed filtering AI variants (there were no advantages, just disadvantages)
+
 #### 0.0.9.5
 2020-12-07
 - AI Caching

@@ -1,5 +1,7 @@
+{-# LANGUAGE NoImplicitPrelude #-}
 module Logger(writeLog, writeLogUnsafe, writeLogShow) where
 
+import Relude
 import System.Log.FastLogger
 import System.IO.Unsafe
 import Data.Time.ISO8601
@@ -11,25 +13,25 @@ import Config
 globalLogger :: LoggerSet
 globalLogger = unsafePerformIO $ newFileLoggerSet defaultBufSize $ logFile config
 
-writeLogIO :: String -> IO ()
-writeLogIO str = do
+writeLogIO :: Text -> IO ()
+writeLogIO txt = do
   utcTime <- getCurrentTime
-  let timestampStr = formatISO8601Millis utcTime
-      logEntry     = timestampStr ++ " " ++ str ++ "\n"
+  let timestampText = toText $ formatISO8601Millis utcTime
+      logEntry     = timestampText <> " " <> txt <> "\n"
   pushLogStr globalLogger $ toLogStr logEntry
 
 {-# NOINLINE writeLogUnsafe #-}
-writeLogUnsafe :: String -> ()
-writeLogUnsafe str = if loggingOn config then unsafePerformIO $ writeLogIO str else ()
+writeLogUnsafe :: Text -> ()
+writeLogUnsafe txt = if loggingOn config then unsafePerformIO $ writeLogIO txt else ()
 
 
-writeLog :: String -> a -> a
-writeLog str expr = expr
+writeLog :: Text -> a -> a
+writeLog txt expr = expr
   where
-    !_ = writeLogUnsafe str
+    !_ = writeLogUnsafe txt
 
 
-writeLogShow :: Show a => String -> a -> a
-writeLogShow str expr = expr
+writeLogShow :: ToText a => Text -> a -> a
+writeLogShow txt expr = expr
   where
-    !_ = writeLogUnsafe $ str ++ show expr
+    !_ = writeLogUnsafe $ txt <> toText expr

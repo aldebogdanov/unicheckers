@@ -1,13 +1,21 @@
+{-# LANGUAGE NoImplicitPrelude #-}
 module Main (
     main
 ) where
 
+import Relude
 import AI
-import State
-import Data.Foldable (find)
-import Data.Maybe (isJust, fromMaybe, mapMaybe)
+import GameState
 import UI.NCurses
-import Control.Monad (when)
+
+
+data MyColor
+    = IdleBlack
+    | IdleWhite
+    | BlueBlack
+    | BlueWhite
+    | RedBlack
+    | RedWhite
 
 
 main :: IO ()
@@ -15,7 +23,7 @@ main = runCurses $ do
     setEcho False
     setCursorMode CursorInvisible
 
-    let initial = State { status    = Stopped
+    let initial = GameState { status    = Stopped
                         , turn      = Blues
                         , cursor    = (3, 3)
                         , figures   = [] -- generateFigures
@@ -36,7 +44,13 @@ main = runCurses $ do
     c4 <- newColorID ColorRed ColorBlack $ toInteger redBlack
     c5 <- newColorID ColorRed ColorWhite $ toInteger redWhite
 
-    let colors = [defaultColorID, c0, c1, c2, c3, c4, c5]
+    let colors mc = case mc of 
+          IdleBlack -> c0
+          IdleWhite -> c1
+          BlueBlack -> c2
+          BlueWhite -> c3
+          RedBlack  -> c4
+          RedWhite  -> c5
 
     win      <- newWindow 28 46 0 0
     (sh, sw) <- screenSize
@@ -45,14 +59,14 @@ main = runCurses $ do
 
     loop win owin dwin colors initial
         where
-            loop win owin dwin colors state = do
+            loop win owin dwin colors s = do
 
-                update win colors state
-                updateOptions owin colors state
-                updateDebug dwin state
+                update win colors s
+                updateOptions owin colors s
+                updateDebug dwin s
 
-                when (status state == InProcess && turn state == aiTeam state) $ loop win owin dwin colors $ handleAI state
---                when (status state == InProcess) $ loop win owin dwin colors $ handleAI state
+                when (status s == InProcess && turn s == aiTeam s) $ loop win owin dwin colors $ handleAI s
+--                when (status s == InProcess) $ loop win owin dwin colors $ handleAI s
 
                 e <- getEvent win Nothing
                 case e of
@@ -60,32 +74,32 @@ main = runCurses $ do
                         closeWindow win
                         cloneWindow owin
                         closeWindow dwin
-                        return ()
-                    Just (EventCharacter '\t') -> loop win owin dwin colors $ state { inOptions = not (inOptions state) }
+                        pass
+                    Just (EventCharacter '\t') -> loop win owin dwin colors $ s { inOptions = not (inOptions s) }
                     Just e'                    -> loop win owin dwin colors $
-                                                  if inOptions state
-                                                      then handleOptionsControl state e'
-                                                      else handleGameControl state e'
-                    _                          -> loop win owin dwin colors state
+                                                  if inOptions s
+                                                      then handleOptionsControl s e'
+                                                      else handleGameControl s e'
+                    _                          -> loop win owin dwin colors s
 
 
-update :: Window -> [ColorID] ->  State -> Curses ()
-update w colors state = do
-    updateWindow w $ drawCells colors state
+update :: Window -> (MyColor -> ColorID) ->  GameState -> Curses ()
+update w colors s = do
+    updateWindow w $ drawCells colors s
     render
 
 
-drawCells :: [ColorID] -> State -> Update ()
-drawCells colors state = do
-    setColor $ colors!!idleBlack
+drawCells :: (MyColor -> ColorID) -> GameState -> Update ()
+drawCells colors s = do
+    setColor $ colors IdleBlack
     drawBorder Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
     moveCursor 0 20
-    setColor $ if inOptions state then colors!!idleBlack else colors!!idleWhite
+    setColor $ if inOptions s then colors IdleBlack else colors IdleWhite
     drawString " GAME "
-    setColor $ colors!!idleBlack
+    setColor $ colors IdleBlack
     sequence_ $ drawAScaleItem <$> zip [1 .. 8] ['a' .. 'h']
     sequence_ $ drawNScaleItem <$> [1 .. 8]
-    sequence_ $ drawCell colors state <$> [ (x, y) | x <- [1 .. 8], y <- [1..8] ]
+    sequence_ $ drawCell colors s <$> [ (x, y) | x <- [1 .. 8], y <- [1..8] ]
 
 
 drawAScaleItem :: (Int, Char) -> Update ()
@@ -104,12 +118,12 @@ drawNScaleItem n = do
     drawString $ show n
 
 
-drawCell :: [ColorID] -> State -> (Int, Int) -> Update ()
-drawCell colors state (x, y) = do
+drawCell :: (MyColor -> ColorID) -> GameState -> (Int, Int) -> Update ()
+drawCell colors s (x, y) = do
     setAttribute AttributeBold True
     moveCursor (fromIntegral $ (8-x) * 3 + 2) (fromIntegral $ (y-1) * 5 + 3)
-    setColor $ if isWhiteCell x y then colors!!idleWhite else colors!!idleBlack
-    if cursor state == (x, y)
+    setColor $ if isWhiteCell x y then colors IdleWhite else colors IdleBlack
+    if cursor s == (x, y)
         then do
             drawGlyph glyphCornerUL
             drawGlyph glyphLineH
@@ -118,24 +132,25 @@ drawCell colors state (x, y) = do
             drawGlyph glyphCornerUR
         else drawString "     "
     moveCursor (fromIntegral $ (8-x) * 3 + 3) (fromIntegral $ (y-1) * 5 + 3)
-    if cursor state == (x, y)
+    if cursor s == (x, y)
         then drawGlyph glyphLineV
         else drawString " "
-    case find (\fig -> fCell fig == (x, y)) $ figures state of
+    case find (\fig -> fCell fig == (x, y)) $ figures s of
         Just figure -> do
             case fTeam figure of
-                Blues -> setColor $ if isWhiteCell x y then colors!!blueWhite else colors!!blueBlack
-                Reds  -> setColor $ if isWhiteCell x y then colors!!redWhite else colors!!redBlack
+                -- maybe redundant check of white cell, but it is safer
+                Blues -> setColor $ if isWhiteCell x y then colors BlueWhite else colors BlueBlack
+                Reds  -> setColor $ if isWhiteCell x y then colors RedWhite else colors RedBlack
             setAttribute AttributeBlink $ isSelected figure
             case fType figure of
-                King    -> if isDebug state then
+                King    -> if isDebug s then
                     drawString (
-                        show x ++ (if figure `elem` snd (fromMaybe (state, []) $ turnResult state) then "X" else "█") ++ show y
+                        show x ++ (if figure `elem` snd (fromMaybe (s, []) $ turnResult s) then "X" else "█") ++ show y
                     ) else drawString "███"
-                Checker -> (if isDebug state then
+                Checker -> (if isDebug s then
                                 (do drawString (show x)
                                     if figure
-                                         `elem` snd (fromMaybe (state, []) $ turnResult state) then
+                                         `elem` snd (fromMaybe (s, []) $ turnResult s) then
                                         drawString "X"
                                     else
                                         drawGlyph glyphBoard
@@ -145,13 +160,13 @@ drawCell colors state (x, y) = do
                                     drawGlyph glyphBoard
                                     drawGlyph glyphBoard))
             setAttribute AttributeBlink False
-            setColor $ if isWhiteCell x y then colors!!idleWhite else colors!!idleBlack
-        Nothing -> drawString $ if any isSelected (figures state) && isJust (turnResult (state {cursor = (x, y)})) then " + " else "   "
-    if cursor state == (x, y)
+            setColor $ if isWhiteCell x y then colors IdleWhite else colors IdleBlack
+        Nothing -> drawString $ if any isSelected (figures s) && isJust (turnResult (s {cursor = (x, y)})) then " + " else "   "
+    if cursor s == (x, y)
         then drawGlyph glyphLineV
         else drawString " "
     moveCursor (fromIntegral $ (8-x) * 3 + 4) (fromIntegral $ (y-1) * 5 + 3)
-    if cursor state == (x, y)
+    if cursor s == (x, y)
         then do
             drawGlyph glyphCornerLL
             drawGlyph glyphLineH
@@ -159,7 +174,7 @@ drawCell colors state (x, y) = do
             drawGlyph glyphLineH
             drawGlyph glyphCornerLR
         else drawString "     "
-    setColor $ colors!!idleBlack
+    setColor $ colors IdleBlack
     drawString " "
 
 
@@ -187,36 +202,36 @@ redWhite = 6
 
 -- OPTIONS
 
-updateOptions :: Window -> [ColorID] -> State -> Curses ()
+updateOptions :: Window -> (MyColor -> ColorID) -> GameState -> Curses ()
 updateOptions ow colors s = do
     updateWindow ow $ drawOptions colors s
     render
 
 
-drawOptions :: [ColorID] -> State -> Update ()
+drawOptions :: (MyColor -> ColorID) -> GameState -> Update ()
 drawOptions colors s = do
-    setColor $ colors!!idleBlack
+    setColor $ colors IdleBlack
     drawBorder Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
     moveCursor 0 11
-    setColor $ if inOptions s then colors!!idleWhite else colors!!idleBlack
+    setColor $ if inOptions s then colors IdleWhite else colors IdleBlack
     drawString " OPTIONS "
-    setColor $ colors!!idleBlack
+    setColor $ colors IdleBlack
     moveCursor 2 2
-    setColor $ colors!!redBlack
+    setColor $ colors RedBlack
     drawString "██"
-    setColor $ colors!!idleBlack
+    setColor $ colors IdleBlack
     moveCursor 2 5
     drawTeamString s Reds
     moveCursor 4 2
-    setColor $ colors!!blueBlack
+    setColor $ colors BlueBlack
     drawString "██"
-    setColor $ colors!!idleBlack
+    setColor $ colors IdleBlack
     moveCursor 4 5
     drawTeamString s Blues
-    setColor $ if option s == 0 then colors!!idleWhite else colors!!idleBlack
+    setColor $ if option s == 0 then colors IdleWhite else colors IdleBlack
     moveCursor 6 2
     drawString "        Change Team        "
-    setColor $ if option s == 1 then colors!!idleWhite else colors!!idleBlack
+    setColor $ if option s == 1 then colors IdleWhite else colors IdleBlack
     moveCursor 8 2
     drawString " "
     drawGlyph glyphArrowL
@@ -225,21 +240,21 @@ drawOptions colors s = do
     drawString " "
     drawGlyph glyphArrowR
     drawString " "
-    setColor $ colors!!idleBlack
+    setColor $ colors IdleBlack
     moveCursor 8 12
     drawString $ "Level: " ++ show (level s)
-    setColor $ if option s == 2 then colors!!idleWhite else colors!!idleBlack
+    setColor $ if option s == 2 then colors IdleWhite else colors IdleBlack
     moveCursor 23 2
     drawString "          New Game          "
-    setColor $ if option s == 3 then colors!!idleWhite else colors!!idleBlack
+    setColor $ if option s == 3 then colors IdleWhite else colors IdleBlack
     moveCursor 25 2
     drawString "       "
     drawGlyph $ if isDebug s then glyphBlock else glyphBullet
     drawString " Debug  Mode       "
-    setColor $ colors!!idleBlack
+    setColor $ colors IdleBlack
 
 
-drawTeamString :: State -> Team -> Update ()
+drawTeamString :: GameState -> Team -> Update ()
 drawTeamString s t  | aiTeam s == t = case winner s of
                                           Just w  -> drawString $ if w == t then "WIN                     "
                                                                             else "LOSE                    "
@@ -259,7 +274,7 @@ drawTeamString s t  | aiTeam s == t = case winner s of
 
 -- DEBUG
 
-updateDebug :: Window -> State -> Curses ()
+updateDebug :: Window -> GameState -> Curses ()
 updateDebug dw s = do
     (_, sw) <- screenSize
     updateWindow dw clear
@@ -271,7 +286,7 @@ dummyFigure :: (Int, Int) -> Figure
 dummyFigure c = Figure Blues Checker c False
 
 
-drawDebug :: State -> Integer -> Update ()
+drawDebug :: GameState -> Integer -> Update ()
 drawDebug s sw = do
     clear
     drawBorder Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
