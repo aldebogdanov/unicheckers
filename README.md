@@ -20,6 +20,9 @@ Features to improve:
 
 
 ### ChangeLog
+#### 0.0.9.7
+2020-12-20
+- No more way to chage team while ga,e is in progress
 
 #### 0.0.9.6
 2020-12-08

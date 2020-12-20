@@ -55,7 +55,7 @@ instance ToText GameState where
 handleOptionsControl :: GameState -> Event -> GameState
 handleOptionsControl s e = case e of
     EventCharacter ' '         -> case option s of
-                                      0 -> s { aiTeam = nextTeam $ aiTeam s }
+                                      0 -> if status s == InProcess then s else s { aiTeam = nextTeam $ aiTeam s }
                                       2 -> s { status = InProcess
                                              , turn = Blues
                                              , winner = Nothing
